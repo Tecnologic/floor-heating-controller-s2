@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name "WEMOS_S2_mini")(type "KiCad")(uri "${KIPRJMOD}/libs/WEMOS_S2_mini.kicad_sym")(options "")(descr ""))
+  (lib (name "L9110S")(type "KiCad")(uri "${KIPRJMOD}/libs/L9110S.kicad_sym")(options "")(descr ""))
+)
