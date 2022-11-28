@@ -323,7 +323,19 @@
     ],
     [
       "a6688dde-44f7-4e25-87cc-79a0f7bb08ef",
-      "motor_output"
+      "motor_output_1"
+    ],
+    [
+      "8068a4f3-d420-4ba7-bb6a-b7d6fed6712d",
+      "motor_output_2"
+    ],
+    [
+      "4df75212-c39a-4c51-b987-40fd598b8648",
+      "motor_output_3"
+    ],
+    [
+      "9386e602-53de-4051-a84c-df01f4a185f9",
+      "motor_output_4"
     ]
   ],
   "text_variables": {}
