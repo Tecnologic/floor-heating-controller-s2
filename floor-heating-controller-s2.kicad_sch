@@ -4,6 +4,12 @@
 
   (paper "A4")
 
+  (title_block
+    (title "Floor Heating Controller S2")
+    (date "2022-11-30")
+    (rev "1")
+  )
+
   (lib_symbols
     (symbol "Connector:4P4C" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
       (property "Reference" "J" (id 0) (at -5.08 8.89 0)
@@ -891,7 +897,6 @@
       )
     )
   )
-
 
   (junction (at 63.5 35.56) (diameter 0) (color 0 0 0 0)
     (uuid 08d1b274-8991-4803-b39a-02b1d834223d)
@@ -2743,9 +2748,7 @@
     (in_bom yes) (on_board yes)
     (uuid cf6d0f71-082f-417a-a4c9-bd9f7cbc0faf)
     (property "Reference" "J18" (id 0) (at 86.36 68.58 90))
-    (property "Value" "Conn_01x01" (id 1) (at 88.9 66.04 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
+    (property "Value" "EXT" (id 1) (at 88.9 64.77 0))
     (property "Footprint" "TestPoint:TestPoint_2Pads_Pitch5.08mm_Drill1.3mm" (id 2) (at 88.9 69.85 0)
       (effects (font (size 1.27 1.27)) hide)
     )
@@ -3472,7 +3475,7 @@
       (reference "J17") (unit 1) (value "VALVE8") (footprint "Connector_RJ:RJ14_Connfly_DS1133-S4_Horizontal")
     )
     (path "/cf6d0f71-082f-417a-a4c9-bd9f7cbc0faf"
-      (reference "J18") (unit 1) (value "Conn_01x01") (footprint "TestPoint:TestPoint_2Pads_Pitch5.08mm_Drill1.3mm")
+      (reference "J18") (unit 1) (value "EXT") (footprint "TestPoint:TestPoint_2Pads_Pitch5.08mm_Drill1.3mm")
     )
     (path "/debddf3b-57ec-419c-9fb2-ac9e95849161"
       (reference "R1") (unit 1) (value "1k") (footprint "Resistor_SMD:R_0603_1608Metric")

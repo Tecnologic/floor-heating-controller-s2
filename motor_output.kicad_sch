@@ -4,6 +4,12 @@
 
   (paper "A4")
 
+  (title_block
+    (title "Floor Heating Controller S2")
+    (date "2022-11-30")
+    (rev "1")
+  )
+
   (lib_symbols
     (symbol "Amplifier_Operational:LM358" (pin_names (offset 0.127)) (in_bom yes) (on_board yes)
       (property "Reference" "U" (id 0) (at 0 5.08 0)
@@ -436,7 +442,6 @@
       )
     )
   )
-
 
   (junction (at 223.52 41.91) (diameter 0) (color 0 0 0 0)
     (uuid 0ce49532-bcd8-4764-a324-a7ce437bb481)
