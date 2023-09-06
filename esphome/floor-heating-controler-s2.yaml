@@ -1,0 +1,35 @@
+esphome:
+    name: floor-heating-controller-s2
+    comment: Floor Heating Controller with sensorless BDC Motor valve actuators
+
+    project:
+        name: "floor_heating_controller.s2"
+        version: "0.0.1"
+esp32:
+    board: lolin_s2_mini
+    framework:
+        type: esp-idf
+        version: recommended
+        # Custom sdkconfig options
+        sdkconfig_options:
+            # USB CDC as console due to no uart wired
+            CONFIG_ESP_CONSOLE_USB_CDC: y
+            CONFIG_ESP_CONSOLE_USB_CDC_RX_BUF_SIZE: "512"
+
+logger:
+    level: VERBOSE
+    baud_rate: 115200
+    deassert_rts_dtr: true
+    hardware_uart: USB_CDC
+
+debug:
+    update_interval: 5s
+
+external_components:
+# use all components from a local folder
+- source:
+    type: local
+    path: ./custom_components
+
+valve:
+    id: test_valve
