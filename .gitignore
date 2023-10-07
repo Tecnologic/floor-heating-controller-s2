@@ -30,3 +30,4 @@ fp-info-cache
 *.pyc
 /.esphome/
 /secrets.yaml
+*.lck
