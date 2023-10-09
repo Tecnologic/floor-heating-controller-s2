@@ -8,54 +8,67 @@
 namespace esphome {
 namespace valve {
 
+constexpr uint8_t GET_UNIT(const uint8_t x) {  return ((x>>3) & 0x1); };
+
 static const char *TAG = "valve.component";
 static const gpio_num_t LED_GPIO = static_cast<gpio_num_t>(15);
 
 TickType_t last_tick = 0;
 bool s_led_state = 0;
 
-static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
-{
-    BaseType_t mustYield = pdFALSE;
-    //Notify that ADC continuous driver has done enough number of conversions
-    vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+constexpr uint32_t TIMES = 256;
+constexpr uint8_t ADC_RESULT_BYTE = 2;
+constexpr uint8_t channel_num = 8;
+static adc_channel_t channel[channel_num] = {ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3,
+                                             ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7};
 
-    return (mustYield == pdTRUE);
+static bool check_valid_data(const adc_digi_output_data_t *data)
+{
+    int unit = data->type2.unit;
+    if (unit >= ADC_UNIT_2) {
+        return false;
+    }
+    if (data->type2.channel >= SOC_ADC_CHANNEL_NUM(unit)) {
+        return false;
+    }
+    return true;
 }
 
-void valve::adc_init()
+
+void Valve::adc_init()
 {
-    adc_config = {
+   adc_digi_init_config_t adc_dma_config = {
         .max_store_buf_size = 1024,
-        .conv_frame_size = ADC_READ_LEN,
+        .conv_num_each_intr = 256,
+        .adc1_chan_mask = 0xFF,
+        .adc2_chan_mask = 0,
     };
-    ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &adc_handle));
+    ESP_ERROR_CHECK(adc_digi_initialize(&adc_dma_config));
 
-    adc_continuous_config_t dig_cfg = {
-        .sample_freq_hz = ADC_SAMPLE_FREQ,
+    adc_digi_configuration_t dig_cfg = {
+        .sample_freq_hz = 20 * 1000,
         .conv_mode = ADC_CONV_SINGLE_UNIT_1,
-        .format = SOC_ADC_DIGI_MAX_BITWIDTH,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };
 
-    std::memset(&dig_cfg, 0, sizeof(dig_cfg));
+    adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
     dig_cfg.pattern_num = channel_num;
-    adc_pattern[0].atten = ADC_ATTEN_DB_0;
-    adc_pattern[0].channel = channel & 0x7;
-    adc_pattern[0].unit = ADC_UNIT_1;
-    adc_pattern[0].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+    for (int i = 0; i < channel_num; i++) {
+        uint8_t unit = ADC_UNIT_1;
+        uint8_t ch = channel[i] & 0x7;
+        adc_pattern[i].atten = ADC_ATTEN_DB_0;
+        adc_pattern[i].channel = ch;
+        adc_pattern[i].unit = unit;
+        adc_pattern[i].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
-    ESP_LOGI(TAG, "adc_pattern[0].atten is :%"PRIx8, adc_pattern[0].atten);
-    ESP_LOGI(TAG, "adc_pattern[0].channel is :%"PRIx8, adc_pattern[0].channel);
-    ESP_LOGI(TAG, "adc_pattern[0].unit is :%"PRIx8, adc_pattern[0].unit);
-    
+        ESP_LOGI(TAG, "adc_pattern[%d].atten is :%x", i, adc_pattern[i].atten);
+        ESP_LOGI(TAG, "adc_pattern[%d].channel is :%x", i, adc_pattern[i].channel);
+        ESP_LOGI(TAG, "adc_pattern[%d].unit is :%x", i, adc_pattern[i].unit);
+    }
     dig_cfg.adc_pattern = adc_pattern;
-    ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
+    ESP_ERROR_CHECK(adc_digi_controller_configure(&dig_cfg)); 
 
-    adc_continuous_evt_cbs_t cbs = {
-        .on_conv_done = s_conv_done_cb,
-    };
-    ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
-    ESP_ERROR_CHECK(adc_continuous_start(handle));
+    adc_digi_start();
 }
 
 
@@ -71,7 +84,11 @@ void Valve::setup() {
 }
 
 void Valve::loop() {
-    
+    esp_err_t ret;
+    uint32_t ret_num = 0;
+    uint8_t result[TIMES] = {0};
+    memset(result, 0xcc, TIMES);
+
     TickType_t current_tick = xTaskGetTickCount();
     TickType_t diff = pdMS_TO_TICKS(1000);
     if((current_tick - last_tick) > diff)
@@ -83,6 +100,54 @@ void Valve::loop() {
         gpio_set_level(LED_GPIO, s_led_state);
         /* Toggle the LED state */
         s_led_state = !s_led_state;
+    }
+
+    ret = adc_digi_read_bytes(result, TIMES, &ret_num, ADC_MAX_DELAY);
+    if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE)
+    {
+        if (ret == ESP_ERR_INVALID_STATE)
+        {
+            /**
+             * @note 1
+             * Issue:
+             * As an example, we simply print the result out, which is super slow. Therefore the conversion is too
+             * fast for the task to handle. In this condition, some conversion results lost.
+             *
+             * Reason:
+             * When this error occurs, you will usually see the task watchdog timeout issue also.
+             * Because the conversion is too fast, whereas the task calling `adc_digi_read_bytes` is slow.
+             * So `adc_digi_read_bytes` will hardly block. Therefore Idle Task hardly has chance to run. In this
+             * example, we add a `vTaskDelay(1)` below, to prevent the task watchdog timeout.
+             *
+             * Solution:
+             * Either decrease the conversion speed, or increase the frequency you call `adc_digi_read_bytes`
+             */
+        }
+
+        ESP_LOGI("TASK:", "ret is %x, ret_num is %d", ret, ret_num);
+/*         for (int i = 0; i < ret_num; i += ADC_RESULT_BYTE)
+        {
+            adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
+            if (check_valid_data(p))
+            {
+                ESP_LOGI(TAG, "Unit: %d,_Channel: %d, Value: %x", p->type2.unit + 1, p->type2.channel, p->type2.data);
+            }
+            else
+            {
+                ESP_LOGI(TAG, "Invalid data");
+            }
+        } */
+        // See `note 1`
+        vTaskDelay(10);
+    }
+    else if (ret == ESP_ERR_TIMEOUT)
+    {
+        /**
+         * ``ESP_ERR_TIMEOUT``: If ADC conversion is not finished until Timeout, you'll get this return error.
+         * Here we set Timeout ``portMAX_DELAY``, so you'll never reach this branch.
+         */
+        ESP_LOGW(TAG, "No data, increase timeout or reduce conv_num_each_intr");
+        vTaskDelay(1000);
     }
 }
 
