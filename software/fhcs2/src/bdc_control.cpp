@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include "bdc_control.h"
 
 // Define how many conversion per pin will happen and reading the data will be and average of all conversions
 #define CONVERSIONS_PER_PIN 50
