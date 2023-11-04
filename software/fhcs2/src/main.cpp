@@ -1,59 +1,23 @@
 #include <Arduino.h>
 #include "bdc_control.h"
 
-// Define how many conversion per pin will happen and reading the data will be and average of all conversions
-#define CONVERSIONS_PER_PIN 50
-
-// use 12 bit precission for LEDC timer
-#define LEDC_TIMER_BIT_WIDTH 10
-
-// use 5000 Hz as a LEDC base frequency
-#define LEDC_BASE_FREQ 16000
-
-// PWM Pins
-uint8_t ledc_pins[] = {9, 11, 13, 16, 18, 33, 35, 37};
-
-// Calculate how many pins are declared in the array - needed as input for the setup function of ADC Continuous
-uint8_t ledc_pins_count = sizeof(ledc_pins) / sizeof(uint8_t);
-
-// Declare array of ADC pins that will be used for ADC Continuous mode - ONLY ADC1 pins are supported
-// Number of selected pins can be from 1 to ALL ADC1 pins.
-uint8_t adc_pins[] = {1, 2, 3, 4, 5, 6, 7, 8};
-
-// Calculate how many pins are declared in the array - needed as input for the setup function of ADC Continuous
-uint8_t adc_pins_count = sizeof(adc_pins) / sizeof(uint8_t);
-
-// Flag which will be set in ISR when conversion is done
-volatile bool adc_coversion_done = false;
-
-// Result structure for ADC Continuous reading
-adc_continuos_data_t *result = NULL;
-
-// ISR Function that will be triggered when ADC conversion is done
-void ARDUINO_ISR_ATTR adcComplete()
-{
-  adc_coversion_done = true;
-}
+std::array<BdcSensorlessPositionControl, 8> motors =
+    {
+        {.pwm_pin = 9, .dir_pin = 10, adc_pin = 1},
+        {.pwm_pin = 11, .dir_pin = 12, adc_pin = 2},
+        {.pwm_pin = 13, .dir_pin = 14, adc_pin = 3},
+        {.pwm_pin = 16, .dir_pin = 17, adc_pin = 4},
+        {.pwm_pin = 18, .dir_pin = 19, adc_pin = 5},
+        {.pwm_pin = 33, .dir_pin = 34, adc_pin = 6},
+        {.pwm_pin = 35, .dir_pin = 36, adc_pin = 7},
+        {.pwm_pin = 37, .dir_pin = 38, adc_pin = 8},
+};
 
 void setup()
 {
-  // Initialize serial communication at 115200 bits per second:
-  Serial.begin(115200);
-
-  // Optional for ESP32: Set the resolution to 9-12 bits (default is 12 bits)
-  analogContinuousSetWidth(12);
-
-  // Optional: Set different attenaution (default is ADC_11db)
-  analogContinuousSetAtten(ADC_11db);
-
-  // Setup ADC Continuous with following input:
-  // array of pins, count of the pins, how many conversions per pin in one cycle will happen, sampling frequency, callback function
-  analogContinuous(adc_pins, adc_pins_count, CONVERSIONS_PER_PIN, 20000, &adcComplete);
-
-  // Start ADC Continuous conversions
-  analogContinuousStart();
-
-  bool ledcAttach(uint8_t pin, uint32_t freq, uint8_t resolution);
+  Serial.begin(112500);
+  delay(1000);
+  BdcSensorlessPositionControl::init();
 }
 
 void loop()
