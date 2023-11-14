@@ -11,11 +11,14 @@ template <std::uint32_t N_MAX_ = 8,
           std::uint32_t ADC_SAMPLE_RATE = 80000,
           std::uint32_t ADC_CONV_PER_PIN = 30,
           std::uint32_t ADC_BIT_WIDTH = 12,
-          adc_attenuation_t ADC_ATTENUATION = ADC_11db>
+          adc_attenuation_t ADC_ATTENUATION = ADC_11db,
+          std::uint32_t TASK_NOTIFICATION_INDEX = 1>
 class BdcSensorlessPositionControl
 {
 public:
 protected:
+  // Logging Tag
+  static constexpr char *TAG = "BDC";
   // array with all the class instances
   static std::array<BdcSensorlessPositionControl *, N_MAX_> instances_ = {0};
   // number of elements in instances_ array
@@ -30,20 +33,34 @@ protected:
   // ISR Function that will be triggered when ADC conversion is done
   static inline void ARDUINO_ISR_ATTR adcComplete(void)
   {
-    adc_coversion_done_ = true;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    /* Notify the task that the transmission is complete. */
+    vTaskNotifyGiveIndexedFromISR(taskHandle_,
+                                  TASK_NOTIFICATION_INDEX,
+                                  &xHigherPriorityTaskWoken);
+    /* If xHigherPriorityTaskWoken is now set to pdTRUE then a
+    context switch should be performed to ensure the interrupt
+    returns directly to the highest priority task.  The macro used
+    for this purpose is dependent on the port in use and may be
+    called portEND_SWITCHING_ISR(). */
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
 
   static void taskControl(void *parameter)
   {
     while (1)
     {
-      if (pdTRUE == xTaskNotifyWait(ULONG_MAX, 0, 0, pdMS_TO_TICKS(1000)))
+      uint32_t notification_value = xTaskNotifyTakeIndexed(TASK_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(1000));
+
+      if (notification_value == 1)
       {
-        //
+        // ADC Conversion was done
       }
       else
       {
         // Timeout
+        ESP_LOGE(TAG, "ADC Timeout");
       }
     }
   }
