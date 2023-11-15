@@ -22,12 +22,15 @@ void setup()
   Serial.begin(112500);
   delay(1000);
   bdc::init();
+  ESP_LOGI(TAG, "Setup complete!");
 }
 
 void loop()
 {
+  std::uint32_t i = 0;
   for (auto &motor : motors)
   {
-    motor.
+    i++;
+    ESP_LOGI(TAG, "Motor %d Current %d uA", i, motor.getCurrent());
   }
 }

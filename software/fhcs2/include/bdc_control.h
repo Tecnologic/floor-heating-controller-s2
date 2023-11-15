@@ -237,7 +237,7 @@ public:
 
 // array with all the class instances
 template <std::uint32_t N_MAX_>
-static std::array<BdcSensorlessPositionControl *, N_MAX_> instances_ = {nullptr};
+static std::array<BdcSensorlessPositionControl<N_MAX_> *, N_MAX_> instances_ = {nullptr};
 // number of elements in instances_ array
 template <std::uint32_t N_MAX_>
 std::uint32_t BdcSensorlessPositionControl<N_MAX_>::no_of_instances_ = 0;
