@@ -4,31 +4,44 @@
 /**
  * @brief class controles brushed dc motor with sensorless position control
  */
-template <std::uint32_t N_MAX_ = 8,
-          std::uint32_t PWM_FREQUENCY = 16000,
-          std::uint32_t PWM_BIT_WIDTH = 12,
-          std::uint32_t PWM_VOLTAGE = 5000, // supply voltage in mv
-          std::uint32_t ADC_SAMPLE_RATE = 80000,
-          std::uint32_t ADC_CONV_PER_PIN = 30,
-          std::uint32_t ADC_BIT_WIDTH = 12,
-          adc_attenuation_t ADC_ATTENUATION = ADC_11db,
-          std::uint32_t TASK_NOTIFICATION_INDEX = 1>
+template <std::uint32_t N_MAX_ = 8>
 class BdcSensorlessPositionControl
 {
 public:
-protected:
+  // PWM frequency
+  static constexpr std::uint32_t PWM_FREQUENCY = 16000;
+  // PWM bit width
+  static constexpr std::uint32_t PWM_BIT_WIDTH = 12;
+  // PWM supply voltage in mV
+  static constexpr std::uint32_t PWM_VOLTAGE = 5000; // supply voltage in mv
+  // ADC sample rate
+  static constexpr std::uint32_t ADC_SAMPLE_RATE = 80000;
+  // ADC conversions per pin
+  static constexpr std::uint32_t ADC_CONV_PER_PIN = 30;
+  // ADC Resolution in bits
+  static constexpr std::uint32_t ADC_BIT_WIDTH = 12;
+  // ADC input attenuation
+  static constexpr adc_attenuation_t ADC_ATTENUATION = ADC_11db;
+  // Conversion factor from mV to uA
+  static constexpr std::uint32_t MV_TO_UA = 70;
+  // Number of offset samples
+  static constexpr std::uint32_t OFFSET_SAMPLES = 1000;
+  // TASK notification index
+  static constexpr std::uint32_t TASK_NOTIFICATION_INDEX = 1;
   // Logging Tag
-  static constexpr char *TAG = "BDC";
+  static constexpr char TAG[4] = "BDC";
+
+protected:
   // array with all the class instances
-  static std::array<BdcSensorlessPositionControl *, N_MAX_> instances_ = {0};
+  static std::array<BdcSensorlessPositionControl *, N_MAX_> instances_;
   // number of elements in instances_ array
-  static std::uint32_t no_of_instances_ = 0;
+  static std::uint32_t no_of_instances_;
   // Result structure for ADC Continuous reading
-  static adc_continuos_data_t *adc_result_ = NULL;
+  static adc_continuos_data_t *adc_result_;
   // Flag which will be set in ISR when conversion is done
-  static volatile bool adc_coversion_done_ = false;
+  static volatile bool adc_coversion_done_;
   // handle to the control task
-  static TaskHandle_t taskHandle_ = NULL;
+  static TaskHandle_t taskHandle_;
 
   // ISR Function that will be triggered when ADC conversion is done
   static inline void ARDUINO_ISR_ATTR adcComplete(void)
@@ -51,11 +64,36 @@ protected:
   {
     while (1)
     {
-      uint32_t notification_value = xTaskNotifyTakeIndexed(TASK_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(1000));
+      uint32_t notification_value = ulTaskNotifyTakeIndexed(TASK_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(1000));
 
       if (notification_value == 1)
       {
         // ADC Conversion was done
+        // Read data from ADC
+        if (analogContinuousRead(&adc_result_, 0))
+        {
+          for (int i = 0; i < no_of_instances_; i++)
+          {
+            if (instances_[i]->offset_samples_ < OFFSET_SAMPLES)
+            {
+              instances_[i]->offset_current_ += adc_result_[i].avg_read_mvolts * MV_TO_UA;
+              instances_[i]->offset_samples++;
+            }
+            else if (instances_[i]->offset_samples == OFFSET_SAMPLES)
+            {
+              instances_[i]->offset_current_ /= instances_[i]->offset_samples;
+              instances_[i]->offset_samples++;
+            }
+            else
+            {
+              instances_[i]->actual_current_ = adc_result_[i].avg_read_mvolts * MV_TO_UA - instances_[i]->offset_current_;
+            }
+          }
+        }
+        else
+        {
+          ESP_LOGE(TAG, "Error occured during reading adc data.");
+        }
       }
       else
       {
@@ -75,8 +113,18 @@ protected:
   std::uint8_t dir_pin_;
   // current measurement in uA
   std::int32_t actual_current_;
+  // set current in uA
+  std::int32_t set_current_;
+  // current offset in uA
+  std::int32_t offset_current_;
   // output voltage in mV
   std::uint32_t output_voltage_;
+  // actual position
+  std::int32_t actual_position_;
+  // set position
+  std::int32_t set_position_;
+  // offset samples
+  std::uint32_t offset_samples_;
 
 public:
   /**
@@ -90,7 +138,12 @@ public:
                                         pwm_pin_(pwm_pin),
                                         dir_pin_(dir_pin),
                                         actual_current_(0),
+                                        set_current_(0),
+                                        offset_current_(0),
                                         output_voltage_(0),
+                                        actual_position_(0),
+                                        set_position_(0),
+                                        offset_samples_(0)
   {
     instances_[index_of_instance_] = this;
     no_of_instances_++;
@@ -155,7 +208,7 @@ public:
   /**
    * @brief set the output voltage for the motor
    */
-  void setVoltage(const std::int32_t voltage, const direction_e dir)
+  void setVoltage(const std::int32_t voltage)
   {
     constexpr std::int32_t PWM_MAX = (1UL << PWM_BIT_WIDTH);
     std::int32_t duty = (PWM_MAX / PWM_VOLTAGE) * voltage;
@@ -169,7 +222,31 @@ public:
       dir = 1;
     }
 
-    ledcWrite(pwm_pins_[instance_index_], duty);
-    digitalWrite(dir_pins_[instance_index_], dir);
+    ledcWrite(pwm_pin_, duty);
+    digitalWrite(dir_pin_, dir);
+  }
+
+  /**
+   * @brief get the acutal current of the motor
+   */
+  std::int32_t getCurrent(void)
+  {
+    return actual_current_;
   }
 };
+
+// array with all the class instances
+template <std::uint32_t N_MAX_>
+static std::array<BdcSensorlessPositionControl *, N_MAX_> instances_ = {nullptr};
+// number of elements in instances_ array
+template <std::uint32_t N_MAX_>
+std::uint32_t BdcSensorlessPositionControl<N_MAX_>::no_of_instances_ = 0;
+// Result structure for ADC Continuous reading
+template <std::uint32_t N_MAX_>
+adc_continuos_data_t *BdcSensorlessPositionControl<N_MAX_>::adc_result_ = nullptr;
+// Flag which will be set in ISR when conversion is done
+template <std::uint32_t N_MAX_>
+volatile bool BdcSensorlessPositionControl<N_MAX_>::adc_coversion_done_ = false;
+// handle to the control task
+template <std::uint32_t N_MAX_>
+TaskHandle_t BdcSensorlessPositionControl<N_MAX_>::taskHandle_ = nullptr;
