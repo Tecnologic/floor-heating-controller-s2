@@ -2,20 +2,28 @@
 #include "bdc_control.h"
 
 constexpr std::uint32_t NO_OF_MOTORS = 8UL;
-using bdc = BdcSensorlessPositionControl<NO_OF_MOTORS>;
-using bdc_array = std::array<bdc, NO_OF_MOTORS>;
+constexpr char TAG[5] = "MAIN";
 
-bdc_array motors =
-    {
-        {.pwm_pin = 9, .dir_pin = 10, .adc_pin = 1},
-        {.pwm_pin = 11, .dir_pin = 12, .adc_pin = 2},
-        {.pwm_pin = 13, .dir_pin = 14, .adc_pin = 3},
-        {.pwm_pin = 16, .dir_pin = 17, .adc_pin = 4},
-        {.pwm_pin = 18, .dir_pin = 19, .adc_pin = 5},
-        {.pwm_pin = 33, .dir_pin = 34, .adc_pin = 6},
-        {.pwm_pin = 35, .dir_pin = 36, .adc_pin = 7},
-        {.pwm_pin = 37, .dir_pin = 38, .adc_pin = 8},
-};
+using bdc = BdcSensorlessPositionControl<NO_OF_MOTORS>;
+using bdc_array = std::array<bdc *, NO_OF_MOTORS>;
+
+bdc motor_1(9, 10, 1);
+bdc motor_2(11, 12, 2);
+bdc motor_3(13, 14, 3);
+bdc motor_4(16, 17, 4);
+bdc motor_5(18, 19, 5);
+bdc motor_6(33, 34, 6);
+bdc motor_7(35, 16, 7);
+bdc motor_8(37, 38, 8);
+
+bdc_array motors = {&motor_1,
+                    &motor_2,
+                    &motor_3,
+                    &motor_4,
+                    &motor_5,
+                    &motor_6,
+                    &motor_7,
+                    &motor_8};
 
 void setup()
 {
@@ -28,9 +36,9 @@ void setup()
 void loop()
 {
   std::uint32_t i = 0;
-  for (auto &motor : motors)
+  for (auto motor : motors)
   {
     i++;
-    ESP_LOGI(TAG, "Motor %d Current %d uA", i, motor.getCurrent());
+    ESP_LOGI(TAG, "Motor %d Current %d uA", i, motor->getCurrent());
   }
 }

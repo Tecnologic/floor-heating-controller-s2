@@ -77,12 +77,12 @@ protected:
             if (instances_[i]->offset_samples_ < OFFSET_SAMPLES)
             {
               instances_[i]->offset_current_ += adc_result_[i].avg_read_mvolts * MV_TO_UA;
-              instances_[i]->offset_samples++;
+              instances_[i]->offset_samples_++;
             }
-            else if (instances_[i]->offset_samples == OFFSET_SAMPLES)
+            else if (instances_[i]->offset_samples_ == OFFSET_SAMPLES)
             {
-              instances_[i]->offset_current_ /= instances_[i]->offset_samples;
-              instances_[i]->offset_samples++;
+              instances_[i]->offset_current_ /= instances_[i]->offset_samples_;
+              instances_[i]->offset_samples_++;
             }
             else
             {
@@ -131,8 +131,8 @@ public:
    * @brief main constuctor
    */
   BdcSensorlessPositionControl(
-      const std::uint8_t pwm_pin = 8,
-      const std::uint8_t dir_pin = 9,
+      const std::uint8_t pwm_pin = 9,
+      const std::uint8_t dir_pin = 10,
       const std::uint8_t adc_pin = 1) : index_of_instance_(no_of_instances_),
                                         adc_pin_(adc_pin),
                                         pwm_pin_(pwm_pin),
@@ -175,7 +175,7 @@ public:
 
     for (std::uint32_t i = 0; i < no_of_instances_; ++i)
     {
-      adc_pins[i] = instances_[i].adc_pin_;
+      adc_pins[i] = instances_[i]->adc_pin_;
     }
 
     // Optional for ESP32: Set the resolution to 9-12 bits (default is 12 bits)
@@ -186,7 +186,7 @@ public:
 
     // Setup ADC Continuous with following input:
     // array of pins, count of the pins, how many conversions per pin in one cycle will happen, sampling frequency, callback function
-    analogContinuous(adc_pins, no_of_instances_, ADC_CONV_PER_PIN, ADC_SAMPLE_RATE, &adcComplete);
+    analogContinuous(adc_pins.data(), no_of_instances_, ADC_CONV_PER_PIN, ADC_SAMPLE_RATE, &adcComplete);
 
     // Start ADC Continuous conversions
     analogContinuousStart();
@@ -200,8 +200,8 @@ public:
     for (std::uint8_t i = 0; i < no_of_instances_; ++i)
     {
       // Setup timer and attach timer to a led pin
-      ledcAttach(instances_[i].pwm_pin, PWM_FREQUENCY, PWM_BIT_WIDTH);
-      pinMode(instances_[i].dir_pin, OUTPUT);
+      ledcAttach(instances_[i]->pwm_pin_, PWM_FREQUENCY, PWM_BIT_WIDTH);
+      pinMode(instances_[i]->dir_pin_, OUTPUT);
     }
   }
 
@@ -237,7 +237,7 @@ public:
 
 // array with all the class instances
 template <std::uint32_t N_MAX_>
-static std::array<BdcSensorlessPositionControl<N_MAX_> *, N_MAX_> instances_ = {nullptr};
+std::array<BdcSensorlessPositionControl<N_MAX_> *, N_MAX_> BdcSensorlessPositionControl<N_MAX_>::instances_ = {nullptr};
 // number of elements in instances_ array
 template <std::uint32_t N_MAX_>
 std::uint32_t BdcSensorlessPositionControl<N_MAX_>::no_of_instances_ = 0;
