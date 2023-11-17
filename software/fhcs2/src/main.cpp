@@ -2,7 +2,6 @@
 #include "bdc_control.h"
 
 constexpr std::uint32_t NO_OF_MOTORS = 8UL;
-constexpr char TAG[5] = "MAIN";
 
 using bdc = BdcSensorlessPositionControl<NO_OF_MOTORS>;
 using bdc_array = std::array<bdc *, NO_OF_MOTORS>;
@@ -28,17 +27,22 @@ bdc_array motors = {&motor_1,
 void setup()
 {
   Serial.begin(112500);
-  delay(1000);
+  delay(10000);
+  Serial.println("Setup start!");
   bdc::init();
-  ESP_LOGI(TAG, "Setup complete!");
+  Serial.println("Setup complete!");
 }
 
 void loop()
 {
   std::uint32_t i = 0;
+  std::int32_t volt = 5000;
   for (auto motor : motors)
   {
     i++;
-    ESP_LOGI(TAG, "Motor %d Current %d uA", i, motor->getCurrent());
+    Serial.printf("Motor %d Current %d uA, Set Voltage %d mV\n", i, motor->getCurrent(), volt);
+    motor->setVoltage(volt);
   }
+  volt = -volt;
+  delay(5000);
 }

@@ -28,8 +28,6 @@ public:
   static constexpr std::uint32_t OFFSET_SAMPLES = 1000;
   // TASK notification index
   static constexpr std::uint32_t TASK_NOTIFICATION_INDEX = 1;
-  // Logging Tag
-  static constexpr char TAG[4] = "BDC";
 
 protected:
   // array with all the class instances
@@ -49,9 +47,8 @@ protected:
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     /* Notify the task that the transmission is complete. */
-    vTaskNotifyGiveIndexedFromISR(taskHandle_,
-                                  TASK_NOTIFICATION_INDEX,
-                                  &xHigherPriorityTaskWoken);
+    vTaskNotifyGiveFromISR(taskHandle_,
+                           &xHigherPriorityTaskWoken);
     /* If xHigherPriorityTaskWoken is now set to pdTRUE then a
     context switch should be performed to ensure the interrupt
     returns directly to the highest priority task.  The macro used
@@ -64,9 +61,9 @@ protected:
   {
     while (1)
     {
-      uint32_t notification_value = ulTaskNotifyTakeIndexed(TASK_NOTIFICATION_INDEX, pdTRUE, pdMS_TO_TICKS(1000));
+      uint32_t notification_value = ulTaskNotifyTake(pdFALSE, pdMS_TO_TICKS(5000));
 
-      if (notification_value == 1)
+      if (notification_value)
       {
         // ADC Conversion was done
         // Read data from ADC
@@ -83,6 +80,7 @@ protected:
             {
               instances_[i]->offset_current_ /= instances_[i]->offset_samples_;
               instances_[i]->offset_samples_++;
+              Serial.printf("Motor %d current offset %d uA\n", i, instances_[i]->offset_current_);
             }
             else
             {
@@ -92,13 +90,13 @@ protected:
         }
         else
         {
-          ESP_LOGE(TAG, "Error occured during reading adc data.");
+          Serial.println("Error occured during reading adc data.");
         }
       }
       else
       {
         // Timeout
-        ESP_LOGE(TAG, "ADC Timeout");
+        Serial.println("ADC Timeout");
       }
     }
   }
