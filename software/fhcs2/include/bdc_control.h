@@ -1,3 +1,6 @@
+#ifndef BDC_SENSORLESS_POSITION_CONTROL_
+#define BDC_SENSORLESS_POSITION_CONTROL_
+
 #include <Arduino.h>
 #include <cstdint>
 
@@ -248,3 +251,5 @@ volatile bool BdcSensorlessPositionControl<N_MAX_>::adc_coversion_done_ = false;
 // handle to the control task
 template <std::uint32_t N_MAX_>
 TaskHandle_t BdcSensorlessPositionControl<N_MAX_>::taskHandle_ = nullptr;
+
+#endif /* BDC_SENSORLESS_POSITION_CONTROL_ */

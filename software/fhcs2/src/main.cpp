@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "bdc_control.h"
+#include "filesystem.h"
 
 constexpr std::uint32_t NO_OF_MOTORS = 8UL;
 
@@ -24,13 +25,19 @@ bdc_array motors = {&motor_1,
                     &motor_7,
                     &motor_8};
 
+extern void setupWifi();
+
 void setup()
 {
   Serial.begin(112500);
   delay(10000);
-  Serial.println("Setup start!");
+  Serial.println("Setup BDC!");
   bdc::init();
-  Serial.println("Setup complete!");
+  Serial.println("Setup BDC complete!");
+
+  Serial.println("Setup FS!");
+  filesystem::init();
+  Serial.println("Setup FS complete!");
 }
 
 void loop()
