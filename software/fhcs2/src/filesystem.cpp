@@ -1,7 +1,4 @@
-#include <Arduino.h>
-#include "FS.h"
-#include <LittleFS.h>
-#include <time.h>
+#include "filesystem.h"
 
 namespace filesystem
 {
@@ -47,7 +44,7 @@ namespace filesystem
 
         if (levels)
         {
-          listDir(fs, file.name(), levels - 1);
+          listDir(file.name(), levels - 1);
         }
       }
       else
@@ -91,7 +88,7 @@ namespace filesystem
     }
   }
 
-  void readFile(const char *path)
+  String readFile(const char *path)
   {
     Serial.printf("Reading file: %s\r\n", path);
 
@@ -99,15 +96,16 @@ namespace filesystem
     if (!file || file.isDirectory())
     {
       Serial.println("- failed to open file for reading");
-      return;
+      return String();
     }
 
-    Serial.println("- read from file:");
+    String fileContent;
     while (file.available())
     {
-      Serial.write(file.read());
+      fileContent = file.readStringUntil('\n');
+      break;
     }
-    file.close();
+    return fileContent;
   }
 
   void writeFile(const char *path, const char *message)

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "bdc_control.h"
 #include "filesystem.h"
+#include "wifimanager.h"
 
 constexpr std::uint32_t NO_OF_MOTORS = 8UL;
 
@@ -38,6 +39,10 @@ void setup()
   Serial.println("Setup FS!");
   filesystem::init();
   Serial.println("Setup FS complete!");
+
+  Serial.println("Setup Wifi!");
+  wifimanager::init();
+  Serial.println("Setup Wifi complete!");
 }
 
 void loop()
