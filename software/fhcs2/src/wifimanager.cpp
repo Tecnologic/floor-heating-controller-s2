@@ -1,12 +1,13 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <ESPAsyncWebServer.h>
-#include <AsyncTCP.h>
+#include <WebServer.h>
+#include <WiFiClient.h>
+#include <ESPmDNS.h>
 #include "filesystem.h"
 namespace wifimanager
 {
   // Create AsyncWebServer object on port 80
-  AsyncWebServer server(80);
+  WebServer server(80);
 
   // Search for parameter in HTTP POST request
   const char *PARAM_INPUT_1 = "ssid";
