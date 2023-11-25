@@ -2,16 +2,16 @@
 
 namespace filesystem
 {
-  constexpr bool FORMAT_LITTLEFS_IF_FAILED = true;
   fs::FS &fs = LittleFS;
 
   void init(void)
   {
-    if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED))
+    if (!LittleFS.begin(true))
     {
       Serial.println("LittleFS Mount Failed");
       return;
     }
+    listDir("/", 3);
   }
 
   void listDir(const char *dirname, uint8_t levels)

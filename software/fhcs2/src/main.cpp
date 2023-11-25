@@ -56,5 +56,6 @@ void loop()
     motor->setVoltage(volt);
   }
   volt = -volt;
-  delay(5000);
+  wifimanager::handle();
+  delay(1000);
 }

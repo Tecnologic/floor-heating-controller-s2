@@ -6,15 +6,17 @@
 #include <DNSServer.h>
 #include <ArduinoJson.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+#include "ota.h"
 #include "filesystem.h"
 namespace wifimanager
 {
-  // Search for parameter in HTTP POST request
+  // Search for parameter in Json
   const char *TAG_SSID = "ssid";
   const char *TAG_PASS = "pass";
   const char *TAG_IP = "ip";
   const char *TAG_GATE = "gateway";
+  const char *TAG_DNS = "dns";
+  const char *TAG_SUBNET = "subnet";
   const char *TAG_HOST = "hostname";
 
   // Allocate the JSON document
@@ -23,90 +25,77 @@ namespace wifimanager
   // Don't forget to change this value to match your JSON document.
   // Use arduinojson.org/v6/assistant to compute the capacity.
   StaticJsonDocument<1024> doc;
+  char jsonBuffer[1024];
 
   // Create AsyncWebServer object on port 80
   WebServer server(80);
 
-  // DNS Server for Captiv Portal
+  // DNS Server for Captive Portal
   const byte DNS_PORT = 53;
   IPAddress apIP(8, 8, 4, 4); // The default android DNS
   DNSServer dnsServer;
 
   // Variables to save values from HTML form
-  String ssid;
-  String pass;
-  String ip;
-  String gateway;
-  String hostname;
+  const char *ssid;
+  const char *pass;
+  IPAddress ip;
+  IPAddress gateway;
+  IPAddress dns;
+  IPAddress subnet;
+  const char *hostname;
 
   // File paths to save input values permanently
   const char *configJasonPath = "/config.json";
 
-  IPAddress localIP;
-
-  // Set your Gateway IP address
-  IPAddress localGateway;
-  IPAddress subnet(255, 255, 0, 0);
-
-  // Timer variables
-  std::uint32_t previousMillis = 0;
-  constexpr std::uint32_t interval = 10000; // interval to wait for Wi-Fi connection (milliseconds)
-
+  // restart needed?
   bool restart = false;
 
+  // currently running in AP Mode?
   bool softAp = false;
 
-  void handleNotFound(void)
-  {
-    File dataFile = SD.open(path.c_str());
-    if (dataFile.isDirectory())
-    {
-      path += "/index.htm";
-      dataType = "text/html";
-      dataFile = SD.open(path.c_str());
-    }
-
-    if (!dataFile)
-    {
-      return false;
-    }
-
-    if (server.streamFile(dataFile, dataType) != dataFile.size())
-    {
-      DBG_OUTPUT_PORT.println("Sent less data than expected!");
-    }
-
-    dataFile.close();
-  }
+  // is the IP Address static?
+  bool staticIP = false;
 
   // Initialize WiFi
-  bool initWiFi()
+  bool initWiFi(void)
   {
-    if (ssid == "" || ip == "")
+    if (ssid == "")
     {
-      Serial.println("Undefined SSID or IP address.");
+      Serial.println("Undefined SSID.");
       return false;
     }
 
     WiFi.mode(WIFI_STA);
-    localIP.fromString(ip.c_str());
-    localGateway.fromString(gateway.c_str());
 
-    if (!WiFi.config(localIP, localGateway, subnet))
+    if (staticIP)
     {
-      Serial.println("STA Failed to configure");
+      if (!WiFi.config(ip, gateway, subnet))
+      {
+        Serial.println("STA Failed to configure");
+        return false;
+      }
+      else
+      {
+        Serial.println("STA configured to static:");
+        Serial.print("     IP: ");
+        Serial.println(ip);
+        Serial.print("Gateway: ");
+        Serial.println(gateway);
+        Serial.print(" Subnet: ");
+        Serial.println(subnet);
+      }
+    }
+
+    WiFi.begin(ssid, pass);
+
+    Serial.println("Connecting to WiFi");
+
+    if (WiFi.waitForConnectResult(30000) != WL_CONNECTED)
+    {
       return false;
     }
-    WiFi.begin(ssid.c_str(), pass.c_str());
 
-    Serial.println("Connecting to WiFi...");
-    delay(20000);
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      Serial.println("Failed to connect.");
-      return false;
-    }
-
+    Serial.println("STA DHCP IP:");
     Serial.println(WiFi.localIP());
     return true;
   }
@@ -114,18 +103,27 @@ namespace wifimanager
   void init()
   {
     // Deserialize the JSON document
-    DeserializationError error = deserializeJson(doc, filesystem::readFile(configJasonPath));
-    // Load values saved in LittleFS
-    ssid = doc[TAG_SSID];
-    pass = doc[TAG_PASS];
-    ip = doc[TAG_IP];
-    gateway = doc[TAG_GATE];
-    hostname = doc[TAG_HOST];
-    Serial.println(ssid);
-    Serial.println(pass);
-    Serial.println(ip);
-    Serial.println(gateway);
-    Serial.println(hostname);
+    String fileContent = filesystem::readFile(configJasonPath);
+    Serial.println("JSON File Content:");
+    Serial.println(fileContent);
+    DeserializationError error = deserializeJson(doc, fileContent.c_str());
+
+    if (DeserializationError::Code::Ok == error)
+    {
+      // Load values saved in LittleFS
+      ssid = doc[TAG_SSID];
+      pass = doc[TAG_PASS];
+      ip.fromString((const char *)doc[TAG_IP]);
+      gateway.fromString((const char *)doc[TAG_GATE]);
+      dns.fromString((const char *)doc[TAG_DNS]);
+      subnet.fromString((const char *)doc[TAG_SUBNET]);
+      hostname = doc[TAG_HOST];
+
+      if (ip.isAny())
+      {
+        staticIP = true;
+      }
+    }
 
     if (initWiFi())
     {
@@ -143,6 +141,8 @@ namespace wifimanager
                 { server.send(200, "text/html", filesystem::readFile("/index.html")); });
 
       server.serveStatic("/", LittleFS, "/");
+
+      ota::init(hostname);
 
       server.begin();
     }
@@ -173,12 +173,14 @@ namespace wifimanager
     }
   }
 
-  void loop()
+  // loop handling of wifi stuff
+  void handle()
   {
     if (softAp)
     {
       dnsServer.processNextRequest();
     }
     server.handleClient();
+    ota::handle();
   }
 } /* namespace wifimanager */
