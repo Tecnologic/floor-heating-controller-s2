@@ -198,12 +198,27 @@ public:
    */
   static void initPWM(void)
   {
+    Serial.println("PWM INIT");
     for (std::uint8_t i = 0; i < no_of_instances_; ++i)
     {
-      // Setup timer and attach timer to a led pin
-      ledcAttach(instances_[i]->pwm_pin_, PWM_FREQUENCY, PWM_BIT_WIDTH);
-      pinMode(instances_[i]->dir_pin_, OUTPUT);
+      Serial.print("Instance ");
+      Serial.print(i);
+      instances_[i]->initPins();
     }
+  }
+
+  /**
+   * @brief init the PWM Pins
+   */
+  void initPins(void)
+  {
+    Serial.print(" PWM Pin ");
+    Serial.print(pwm_pin_);
+    // Setup timer and attach timer to a led pin
+    // ledcAttach(instances_[i]->pwm_pin_, PWM_FREQUENCY, PWM_BIT_WIDTH);
+    Serial.print(" Dir Pin ");
+    Serial.println(dir_pin_);
+    pinMode(dir_pin_, OUTPUT);
   }
 
   /**

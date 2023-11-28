@@ -105,23 +105,47 @@ namespace wifimanager
     // Deserialize the JSON document
     String fileContent = filesystem::readFile(configJasonPath);
     Serial.println("JSON File Content:");
-    Serial.println(fileContent);
+    Serial.print(fileContent);
     DeserializationError error = deserializeJson(doc, fileContent.c_str());
+
+    Serial.print("JSON Deserialize Result:");
+    Serial.println(error.c_str());
 
     if (DeserializationError::Code::Ok == error)
     {
       // Load values saved in LittleFS
       ssid = doc[TAG_SSID];
+      Serial.print("SSID");
+      Serial.println(ssid);
+
       pass = doc[TAG_PASS];
-      ip.fromString((const char *)doc[TAG_IP]);
-      gateway.fromString((const char *)doc[TAG_GATE]);
-      dns.fromString((const char *)doc[TAG_DNS]);
-      subnet.fromString((const char *)doc[TAG_SUBNET]);
+      Serial.print("PASS");
+      Serial.println(pass);
+
       hostname = doc[TAG_HOST];
+      Serial.print("Host");
+      Serial.println(hostname);
+
+      ip.fromString((const char *)doc[TAG_IP]);
+      Serial.print("IP");
+      Serial.println(ip);
+
+      gateway.fromString((const char *)doc[TAG_GATE]);
+      Serial.print("Gateway");
+      Serial.println(gateway);
+
+      dns.fromString((const char *)doc[TAG_DNS]);
+      Serial.print("DNS");
+      Serial.println(dns);
+
+      subnet.fromString((const char *)doc[TAG_SUBNET]);
+      Serial.print("SUBNET");
+      Serial.println(subnet);
 
       if (ip.isAny())
       {
         staticIP = true;
+        Serial.println("STATIC IP");
       }
     }
 

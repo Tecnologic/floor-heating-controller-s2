@@ -100,10 +100,9 @@ namespace filesystem
     }
 
     String fileContent;
-    while (file.available())
+    if (file.available())
     {
-      fileContent = file.readStringUntil('\n');
-      break;
+      fileContent = file.readString();
     }
     return fileContent;
   }
