@@ -2,6 +2,8 @@
 #include "bdc_control.h"
 #include "filesystem.h"
 #include "wifimanager.h"
+#include "esp_log.h"
+
 
 constexpr std::uint32_t NO_OF_MOTORS = 8UL;
 
@@ -26,36 +28,67 @@ bdc_array motors = {&motor_1,
                     &motor_7,
                     &motor_8};
 
-extern void setupWifi();
+void wait_for_seconds(std::uint32_t sec)
+{
+  USBSerial.print("Waiting for ");
+  USBSerial.print(sec);
+  USBSerial.print("sec   ");
+  for (std::uint8_t i = 0; i < 10; i++)
+  {
+    USBSerial.print(".");
+    digitalWrite(LED_BUILTIN, LOW);    
+    delay(500);
+    digitalWrite(LED_BUILTIN, HIGH);    
+    delay(500);
+  }
+  USBSerial.println("");
+}
+ 
 
 void setup()
 {
-  Serial.begin(112500);
-  delay(10000);
-  Serial.println("Setup BDC!");
-  bdc::init();
-  Serial.println("Setup BDC complete!");
+  // initialize digital pin LED_BUILTIN as an output.
+  pinMode(LED_BUILTIN, OUTPUT);
+  USBSerial.begin(112500);
+  USBSerial.setDebugOutput(true);
+  esp_log_level_set("*", ESP_LOG_VERBOSE);        // set all components to ERROR level
+  wait_for_seconds(20);
 
-  Serial.println("Setup FS!");
-  filesystem::init();
-  Serial.println("Setup FS complete!");
+  USBSerial.println("Setup BDC!");
+  // bdc::init();
+  USBSerial.println("Setup BDC complete!");
 
-  Serial.println("Setup Wifi!");
-  wifimanager::init();
-  Serial.println("Setup Wifi complete!");
+  wait_for_seconds(20);
+  USBSerial.println("Setup FS!");
+  // filesystem::init();
+  USBSerial.println("Setup FS complete!");
+
+  wait_for_seconds(20);
+  USBSerial.println("Setup Wifi!");
+  // wifimanager::init();
+  USBSerial.println("Setup Wifi complete!");
 }
 
 void loop()
 {
-  std::uint32_t i = 0;
-  std::int32_t volt = 5000;
-  for (auto motor : motors)
-  {
-    i++;
-    Serial.printf("Motor %d Current %d uA, Set Voltage %d mV\n", i, motor->getCurrent(), volt);
-    motor->setVoltage(volt);
-  }
-  volt = -volt;
-  wifimanager::handle();
+  static std::uint32_t seconds = 0;
+  // std::uint32_t i = 0;
+  // std::int32_t volt = 5000;
+  // for (auto motor : motors)
+  // {
+  //   i++;
+  //   USBSerial.printf("Motor %d Current %d uA, Set Voltage %d mV\n", i, motor->getCurrent(), volt);
+  //   motor->setVoltage(volt);
+  // }
+  // volt = -volt;
+  // wifimanager::handle();
+  seconds++;
+  digitalWrite(LED_BUILTIN, LOW);    
   delay(1000);
+  seconds++;
+  digitalWrite(LED_BUILTIN, HIGH);    
+  delay(1000);
+  USBSerial.print("running for ");
+  USBSerial.print(seconds);
+  USBSerial.println("sec   ");
 }
