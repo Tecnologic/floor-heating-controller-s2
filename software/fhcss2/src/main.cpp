@@ -1,48 +1,76 @@
 #include <stdio.h>
+#include <cstdint>
 #include "string.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "esp_attr.h"
-#include "driver/ledc.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "bdc_control.h"
+#include "driver/gpio.h"
 
 const char* TAG = "fhcs2";
 
-static void pwm_init(void)
-{
-    // Prepare and then apply the LEDC PWM timer configuration
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_LOW_SPEED_MODE,
-        .duty_resolution  = LEDC_TIMER_12_BIT ,
-        .timer_num        = LEDC_TIMER_0,
-        .freq_hz          = 19531,  
-        .clk_cfg          = LEDC_AUTO_CLK
-    };
-    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+constexpr std::uint32_t NO_OF_MOTORS = 2UL;
 
-    // Prepare and then apply the LEDC PWM channel configuration
-    ledc_channel_config_t ledc_channel = {
-        .gpio_num       = 2,
-        .speed_mode     = LEDC_LOW_SPEED_MODE,
-        .channel        = LEDC_CHANNEL_0,
-        .intr_type      = LEDC_INTR_DISABLE,
-        .timer_sel      = LEDC_TIMER_0,
-        .duty           = 0, // Set duty to 0%
-        .hpoint         = 0,
-        .flags          = {0}
-    };
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
-}
+using bdc = BdcSensorlessPositionControl<NO_OF_MOTORS>;
+using bdc_array = std::array<bdc *, NO_OF_MOTORS>;
+
+bdc motor_1(GPIO_NUM_9, GPIO_NUM_10, GPIO_NUM_1);
+bdc motor_2(GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_2);
+// bdc motor_3(GPIO_NUM_13, GPIO_NUM_14, GPIO_NUM_3);
+// bdc motor_4(GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_4);
+// bdc motor_5(GPIO_NUM_18, GPIO_NUM_19, GPIO_NUM_5);
+// bdc motor_6(GPIO_NUM_33, GPIO_NUM_34, GPIO_NUM_6);
+// bdc motor_7(GPIO_NUM_35, GPIO_NUM_16, GPIO_NUM_7);
+// bdc motor_8(GPIO_NUM_37, GPIO_NUM_38, GPIO_NUM_8);
+
+bdc_array motors = {&motor_1,
+                    &motor_2,
+                    /*&motor_3,
+                    &motor_4,
+                    &motor_5,
+                    &motor_6,
+                    &motor_7,
+                    &motor_8*/};
 
 extern "C" void app_main() 
 {
-    ESP_LOG_INFO(TAG, "app_main started init of pwm");
-    // Set the LEDC peripheral configuration
-    pwm_init();
-    // Set duty to 50%
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 2048));
-    // Update duty to apply the new value
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+    std::uint32_t count = 0;
+    ESP_LOGI(TAG, "Started Setup BDC");
+    bdc::init();
+    ESP_LOGI(TAG, "Setup BDC complete!");
+    
+    while(1)
+    {
+        static std::int32_t volt = 0;
+        static bool invert = false;
+        std::int32_t step = 50;
+
+        ESP_LOGI(TAG, "Count: %lu", count++);
+         
+        for (auto motor : motors)
+        {
+            motor->setVoltage(volt);
+        }
+
+        if (invert)
+        {
+            volt -= step;
+        }
+        else
+        {
+            volt += step;
+        }
+
+        if (volt >= bdc::PWM_VOLTAGE)
+        {
+            invert = true;
+        }
+
+        if (volt <= -bdc::PWM_VOLTAGE)
+        {
+            invert = false;
+        }
+
+        gpio_set_level(bdc::LED_PIN, count % 2UL);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
 }
