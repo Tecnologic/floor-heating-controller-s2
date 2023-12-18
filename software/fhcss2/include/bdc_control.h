@@ -37,7 +37,11 @@ public:
   // TASK notification index
   static constexpr std::uint32_t TASK_NOTIFICATION_INDEX = 1;
   // Pin for buildin LED
+  #ifdef S2MINI
+  static constexpr gpio_num_t LED_PIN = GPIO_NUM_15;
+  #else
   static constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
+  #endif
 
 protected:
   // ESP Logging tag
