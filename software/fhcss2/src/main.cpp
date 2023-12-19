@@ -40,37 +40,22 @@ extern "C" void app_main()
     
     while(1)
     {
-        static std::int32_t volt = 0;
-        static bool invert = false;
-        std::int32_t step = 50;
-
-        ESP_LOGI(TAG, "Count: %lu", count++);
-         
+        static std::int32_t volt = bdc::PWM_VOLTAGE;
+       
         for (auto motor : motors)
         {
             motor->setVoltage(volt);
         }
 
-        if (invert)
+        if (count % 2UL == 0)
         {
-            volt -= step;
+            static bool toggle = false;
+            toggle = !toggle;
+            gpio_set_level(bdc::LED_PIN, toggle);
+            ESP_LOGI(TAG, "Count %lu", count);
         }
-        else
-        {
-            volt += step;
-        }
-
-        if (volt >= bdc::PWM_VOLTAGE)
-        {
-            invert = true;
-        }
-
-        if (volt <= -bdc::PWM_VOLTAGE)
-        {
-            invert = false;
-        }
-
-        gpio_set_level(bdc::LED_PIN, count % 2UL);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        
+        count++;
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
