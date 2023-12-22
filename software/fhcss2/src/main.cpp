@@ -6,43 +6,43 @@
 #include "bdc_control.h"
 #include "driver/gpio.h"
 
-const char* TAG = "fhcs2";
+const char *TAG = "fhcs2";
 
-constexpr std::uint32_t NO_OF_MOTORS = 2UL;
+constexpr std::uint32_t NO_OF_MOTORS = 8UL;
 
 using bdc = BdcSensorlessPositionControl<NO_OF_MOTORS>;
 using bdc_array = std::array<bdc *, NO_OF_MOTORS>;
 
 bdc motor_1(GPIO_NUM_9, GPIO_NUM_10, GPIO_NUM_1);
 bdc motor_2(GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_2);
-// bdc motor_3(GPIO_NUM_13, GPIO_NUM_14, GPIO_NUM_3);
-// bdc motor_4(GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_4);
-// bdc motor_5(GPIO_NUM_18, GPIO_NUM_19, GPIO_NUM_5);
-// bdc motor_6(GPIO_NUM_33, GPIO_NUM_34, GPIO_NUM_6);
-// bdc motor_7(GPIO_NUM_35, GPIO_NUM_16, GPIO_NUM_7);
-// bdc motor_8(GPIO_NUM_37, GPIO_NUM_38, GPIO_NUM_8);
+bdc motor_3(GPIO_NUM_13, GPIO_NUM_14, GPIO_NUM_3);
+bdc motor_4(GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_4);
+bdc motor_5(GPIO_NUM_18, GPIO_NUM_19, GPIO_NUM_5);
+bdc motor_6(GPIO_NUM_33, GPIO_NUM_34, GPIO_NUM_6);
+bdc motor_7(GPIO_NUM_35, GPIO_NUM_16, GPIO_NUM_7);
+bdc motor_8(GPIO_NUM_37, GPIO_NUM_38, GPIO_NUM_8);
 
 bdc_array motors = {&motor_1,
                     &motor_2,
-                    /*&motor_3,
+                    &motor_3,
                     &motor_4,
                     &motor_5,
                     &motor_6,
                     &motor_7,
-                    &motor_8*/};
+                    &motor_8};
 
-extern "C" void app_main() 
+extern "C" void app_main()
 {
     std::uint32_t count = 0;
     ESP_LOGI(TAG, "Started Setup BDC");
     bdc::init();
     ESP_LOGI(TAG, "Setup BDC complete!");
-    
-    while(1)
+
+    while (1)
     {
         static std::int32_t volt = bdc::PWM_VOLTAGE;
         count++;
-       
+
         for (auto motor : motors)
         {
             motor->setVoltage(volt);
@@ -54,10 +54,9 @@ extern "C" void app_main()
             toggle = !toggle;
             gpio_set_level(bdc::LED_PIN, toggle);
             ESP_LOGI(TAG, "Count %lu", count);
-            volt = bdc::PWM_VOLTAGE/2;
+            volt = bdc::PWM_VOLTAGE * 3 / 4;
         }
-        
-    
+
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
