@@ -31,3 +31,6 @@ fp-info-cache
 /.esphome/
 /secrets.yaml
 *.lck
+software/fhcs2/.pio/*
+*.json
+
