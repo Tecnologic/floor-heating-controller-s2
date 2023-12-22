@@ -41,6 +41,7 @@ extern "C" void app_main()
     while(1)
     {
         static std::int32_t volt = bdc::PWM_VOLTAGE;
+        count++;
        
         for (auto motor : motors)
         {
@@ -53,9 +54,10 @@ extern "C" void app_main()
             toggle = !toggle;
             gpio_set_level(bdc::LED_PIN, toggle);
             ESP_LOGI(TAG, "Count %lu", count);
+            volt = bdc::PWM_VOLTAGE/2;
         }
         
-        count++;
+    
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
