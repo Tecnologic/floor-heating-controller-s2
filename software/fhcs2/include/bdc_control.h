@@ -24,7 +24,7 @@ class BdcSensorlessPositionControl
 {
 public:
   // PWM supply voltage in mV
-  static constexpr std::int32_t PWM_VOLTAGE = 5000; // supply voltage in mv
+  static constexpr std::int32_t PWM_VOLTAGE = 2000; // supply voltage in mv
   // ADC sample rate
   static constexpr std::uint32_t ADC_SAMPLE_RATE = 800;
   // ADC conversions per pin
@@ -121,7 +121,7 @@ protected:
            * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
            * usually you don't need this delay (as this task will block for a while).
            */
-          vTaskDelay(1);
+          vTaskDelay(100);
         }
         else if (ret == ESP_ERR_TIMEOUT)
         {
@@ -265,9 +265,9 @@ public:
     // Prepare and then apply the LEDC PWM timer configuration
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_12_BIT,
+        .duty_resolution = LEDC_TIMER_10_BIT,
         .timer_num = LEDC_TIMER_0,
-        .freq_hz = 4000,
+        .freq_hz = 40000,
         .clk_cfg = LEDC_AUTO_CLK};
     ledc_timer_config(&ledc_timer);
 
@@ -300,7 +300,7 @@ public:
    */
   void setVoltage(const std::int32_t voltage)
   {
-    constexpr std::int32_t PWM_MAX = (1UL << LEDC_TIMER_12_BIT);
+    constexpr std::int32_t PWM_MAX = (1UL << LEDC_TIMER_10_BIT);
     std::int32_t duty = (PWM_MAX * voltage) / PWM_VOLTAGE;
     std::uint8_t dir = 0;
 
