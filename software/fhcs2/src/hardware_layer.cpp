@@ -463,4 +463,7 @@ namespace hardware
     return false;
   }
 
+  // valve controller instances
+  std::array<ValveController, VALVE_CHAN_MAX> valve_controller;
+
 } /* namespace hardware */
