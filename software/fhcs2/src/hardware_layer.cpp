@@ -284,176 +284,6 @@ namespace hardware
   }
 
   /**
-   * @brief set the current position setpoint of the valve
-   *
-   * @param position new position setpoint
-   */
-  void ValveController::setPosition(const std::int32_t position)
-  {
-    set_position_ = position;
-  }
-
-  /**
-   * @brief get the current position setpoint
-   * @retval current position setpoint
-   */
-  std::int32_t ValveController::getSetPosition(void)
-  {
-    return (set_position_);
-  }
-
-  /**
-   * @brief get the actual position of the valve
-   *
-   * @note during motion this value will be different from the
-   *       position setpoint, because the drive will not jump to
-   *       the next position.
-   *
-   * @retval actual position of the valve
-   */
-  std::int32_t ValveController::getPosition(void)
-  {
-    return (actual_position_);
-  }
-
-  /**
-   * @brief get the actual speed setpoint
-   *
-   * @retval actual set speed, output of position control loop
-   */
-  std::int32_t ValveController::getSetSpeed(void)
-  {
-    return (set_speed_);
-  }
-
-  /**
-   * @brief get the actual speed reference value
-   *
-   * @retval actual reference speed
-   */
-  std::int32_t ValveController::getRefSpeed(void)
-  {
-    return (ref_speed_);
-  }
-
-  /**
-   * @brief get the actual speed of the motor
-   *
-   * The controller will apply a trapezodial speed profile
-   * in order to do the path planning for a smooth motion.
-   *
-   * @note the position controller will command a new set speed
-   *       for the drive the rate of change of that set speed
-   *       is limited by the ramp rate.
-   *
-   * @retval actual speed of the motor
-   */
-  std::int32_t ValveController::getSpeed(void)
-  {
-    return (actual_speed_);
-  }
-
-  /**
-   * @brief get the speed ramp
-   *
-   * @retval actual speed ramp
-   */
-  std::int32_t ValveController::getAcceleration(void)
-  {
-    return (acceleration_);
-  }
-
-  /**
-   * @brief set the speed ramp
-   *
-   * @param ramp speed ramp
-   */
-  void ValveController::setAcceleration(const std::int32_t acceleration)
-  {
-    acceleration_ = acceleration;
-  }
-
-  /**
-   * @brief set the current limit for homing
-   *
-   * @param current new homing current limit
-   */
-  void ValveController::setHomingCurrent(const std::int32_t current)
-  {
-    homing_current_ = current;
-  }
-
-  /**
-   * @brief set the direction for homing
-   *
-   * @param forward true for forward rotaton and false for backwards rotation
-   */
-  void ValveController::setHomingDirection(const bool forward)
-  {
-    homing_direction_ = forward;
-  }
-
-  /**
-   * @brief set the timeout for a homing try
-   *
-   * @param timeout homing timeout in ms
-   */
-  void ValveController::setHomingTimeout(const std::uint32_t timeout)
-  {
-    homing_timeout_ = timeout;
-  }
-
-  /**
-   * @brief set homing speed
-   *
-   * @param speed new homing speed
-   */
-  void ValveController::setHomingSpeed(const std::int32_t speed)
-  {
-    homing_speed_ = speed;
-  }
-
-  /**
-   * @brief get the current limit for homing
-   *
-   * @retval actual homing current limit
-   */
-  std::int32_t ValveController::getHomingCurrent(void)
-  {
-    return (homing_current_);
-  }
-
-  /**
-   * @brief get the direction for homing
-   *
-   * @retval true for forward rotaton and false for backwards rotation
-   */
-  bool ValveController::getHomingDirection(void)
-  {
-    return (homing_direction_);
-  }
-
-  /**
-   * @brief get homing speed
-   *
-   * @retval actual homing speed
-   */
-  std::int32_t ValveController::getHomingSpeed(void)
-  {
-    return (homing_speed_);
-  }
-
-  /**
-   * @brief get the timeout for a homing try
-   *
-   * @retval homing timeout in ms
-   */
-  std::uint32_t ValveController::getHomingTimeout(void)
-  {
-    return (homing_timeout_);
-  }
-
-  /**
    * @brief Try to home the valve
    *
    * @retval true for successful competition of the homeing run. false for timeout
@@ -461,6 +291,40 @@ namespace hardware
   bool ValveController::home(void)
   {
     return false;
+  }
+
+  /**
+   * @brief calculate the control loops
+   *
+   * @param Tms time since last call in micro seconds
+   */
+  void ValveController::calculateControls(std::uint32_t Tus)
+  {
+    if (offset_needed_)
+    {
+      if (current_reading_count_ > OFFSET_SAMPLES)
+      {
+        offset_current_ = getReading();
+        offset_needed_ = false;
+      }
+    }
+    else
+    {
+      static std::int32_t last_current = 0;
+      actual_current_ = getReading() - offset_current_;
+
+      // voltage across the series resistance
+      std::int32_t r_volt = (actual_current_ * series_resistance_) / 1000;
+
+      // u = L * di /dt
+      std::int32_t i_volt = (series_inductance_ * (actual_current_ - last_current)) / (Tus * 1000);
+
+      // Bemf voltage as measurement for speed
+      actual_speed_ = output_voltage_ - (r_volt + i_volt);
+
+      // integrate to position
+      actual_position_ += (actual_speed_ * 1000) / Tus;
+    }
   }
 
   // valve controller instances

@@ -52,13 +52,13 @@ namespace hardware
      *
      * @param position new position setpoint
      */
-    void setPosition(const std::int32_t position);
+    inline void setPosition(const std::int32_t position) { set_position_ = position; };
 
     /**
      * @brief get the current position setpoint
      * @retval current position setpoint
      */
-    std::int32_t getSetPosition(void);
+    inline std::int32_t getSetPosition(void) { return (set_position_); };
 
     /**
      * @brief get the actual position of the valve
@@ -69,21 +69,21 @@ namespace hardware
      *
      * @retval actual position of the valve
      */
-    std::int32_t getPosition(void);
+    inline std::int32_t getPosition(void) { return (actual_position_); };
 
     /**
      * @brief get the actual speed setpoint
      *
      * @retval actual set speed, output of position control loop
      */
-    std::int32_t getSetSpeed(void);
+    inline std::int32_t getSetSpeed(void) { return (set_speed_); };
 
     /**
      * @brief get the actual speed reference value
      *
      * @retval actual reference speed
      */
-    std::int32_t getRefSpeed(void);
+    inline std::int32_t getRefSpeed(void) { return (ref_speed_); };
 
     /**
      * @brief get the actual speed of the motor
@@ -97,77 +97,124 @@ namespace hardware
      *
      * @retval actual speed of the motor
      */
-    std::int32_t getSpeed(void);
+    inline std::int32_t getSpeed(void) { return (actual_speed_); };
 
     /**
      * @brief get the speed ramp
      *
      * @retval actual speed ramp
      */
-    std::int32_t getAcceleration(void);
+    inline std::int32_t getAcceleration(void) { return (acceleration_); };
 
     /**
      * @brief set the speed ramp
      *
      * @param ramp speed ramp
      */
-    void setAcceleration(const std::int32_t ramp);
+    inline void setAcceleration(const std::int32_t acc) { acceleration_ = acc; };
 
     /**
      * @brief set the current limit for homing
      *
      * @param current new homing current limit
      */
-    void setHomingCurrent(const std::int32_t current);
+    inline void setHomingCurrent(const std::int32_t current) { homing_current_ = current; };
 
     /**
      * @brief set the direction for homing
      *
      * @param forward true for forward rotaton and false for backwards rotation
      */
-    void setHomingDirection(const bool forward);
+    inline void setHomingDirection(const bool forward) { homing_direction_ = forward; };
 
     /**
      * @brief set the timeout for a homing try
      *
      * @param timeout homing timeout in ms
      */
-    void setHomingTimeout(const std::uint32_t timeout);
+    inline void setHomingTimeout(const std::uint32_t timeout) { homing_timeout_ = timeout; };
 
     /**
      * @brief set homing speed
      *
      * @param speed new homing speed
      */
-    void setHomingSpeed(const std::int32_t speed);
+    inline void setHomingSpeed(const std::int32_t speed) { homing_speed_ = speed; };
 
     /**
      * @brief get the current limit for homing
      *
      * @retval actual homing current limit
      */
-    std::int32_t getHomingCurrent(void);
+    inline std::int32_t getHomingCurrent(void) { return (homing_current_); };
 
     /**
      * @brief get the direction for homing
      *
      * @retval true for forward rotaton and false for backwards rotation
      */
-    bool getHomingDirection(void);
+    inline bool getHomingDirection(void) { return (homing_direction_); };
 
     /**
      * @brief get homing speed
      *
      * @retval actual homing speed
      */
-    std::int32_t getHomingSpeed(void);
+    inline std::int32_t getHomingSpeed(void) { return (homing_speed_); };
 
     /**
      * @brief get the timeout for a homing try
      *
      * @retval homing timeout in ms
      */
-    std::uint32_t getHomingTimeout(void);
+    inline std::uint32_t getHomingTimeout(void) { return (homing_timeout_); };
+
+    /**
+     * @brief set the series resistance of the motor in mOhms
+     *
+     * @param mOhms series resistance of the motor in milli ohms
+     */
+    inline void setMotorSeriesResitance(const std::int32_t mOhms) { series_resistance_ = mOhms; };
+
+    /**
+     * @brief get the series resistance of the motor in mOhms
+     *
+     * @retval series resistance of the motor in milli ohms
+     */
+    inline std::int32_t getMotorSeriesResitance(void) { return (series_resistance_); };
+
+    /**
+     * @brief set the series inductance of the motor in micro henry
+     *
+     * @param uH series inductance of the motor in micro henry
+     */
+    inline void setMotorSeriesInductance(const std::int32_t uH) { series_inductance_ = uH; };
+
+    /**
+     * @brief get the series inductance of the motor in micro henry
+     *
+     * @retval series inductance of the motor in micro henry
+     */
+    inline std::int32_t getMotorSeriesInductance(void) { return (series_inductance_); };
+
+    /**
+     * @brief add a adc reading in micro ampere
+     */
+    inline void addReading(std::int32_t ua)
+    {
+      current_reading_sum_ += ua;
+      current_reading_count_++;
+    }
+
+    /**
+     * @brief add a adc reading in micro ampere
+     */
+    inline std::int32_t getReading(void)
+    {
+      std::int32_t current_reading = current_reading_sum_ / current_reading_count_;
+      current_reading_sum_ = current_reading_count_ = 0;
+      return (current_reading);
+    }
 
     /**
      * @brief Try to home the valve
@@ -177,20 +224,11 @@ namespace hardware
     bool home(void);
 
     /**
-     * @brief add a adc reading in micro ampere
-     */
-    void addReading(std::int32_t ua)
-    {
-      current_reading_sum_ += ua;
-      current_reating_count_++;
-    }
-
-    /**
      * @brief calculate the control loops
+     *
+     * @param Tms time since last call in milli seconds
      */
-    void calculateControls(void)
-    {
-    }
+    void calculateControls(std::uint32_t Tms);
 
   protected:
     // current measurement in uA
@@ -201,8 +239,8 @@ namespace hardware
     std::int32_t offset_current_;
     // output voltage in mV
     std::int32_t output_voltage_;
-    // offset samples
-    std::uint32_t offset_samples_;
+    // offset samples needed just after boot
+    bool offset_needed_;
     // actual position
     std::int32_t actual_position_;
     // set position
@@ -223,11 +261,14 @@ namespace hardware
     std::int32_t homing_direction_;
     // homing timeout
     std::uint32_t homing_timeout_;
-
     // current readings sum
     std::int32_t current_reading_sum_;
     // current reading count
-    std::uint32_t current_reating_count_;
+    std::uint32_t current_reading_count_;
+    // Motor series resistance mOhm
+    std::uint32_t series_resistance_;
+    // Motor series inductance uH
+    std::uint32_t series_inductance_;
   };
 
   /**
