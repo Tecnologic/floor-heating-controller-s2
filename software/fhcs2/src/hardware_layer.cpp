@@ -10,6 +10,8 @@
 #include "esp_adc/adc_continuous.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "soc/soc_caps.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "hardware_layer.h"
@@ -18,10 +20,10 @@ namespace hardware
 {
   // ESP Logging tag
   const char *TAG = "hardware";
+  // Supply Voltage of the power bridge in uV
+  constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
   // PWM frequency in Hz
   constexpr std::int32_t PWM_FREQUENCY = 20000;
-  // ADC sample rate in Hz
-  constexpr std::uint32_t ADC_SAMPLE_RATE = 80000;
   // ADC conversions per pin
   constexpr std::uint32_t ADC_CONV_PER_PIN = 30;
   // ADC Pin attenuation
@@ -93,8 +95,7 @@ namespace hardware
   /**
    * @brief ISR Function that will be triggered when ADC conversion is done
    */
-  bool IRAM_ATTR
-  ConvDoneCB(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
+  bool IRAM_ATTR ConvDoneCB(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
   {
     BaseType_t mustYield = pdFALSE;
     // Notify that ADC continuous driver has done enough number of conversions
@@ -112,6 +113,8 @@ namespace hardware
     std::uint32_t ret_num = 0;
     std::array<uint8_t, ADC_CONV_PER_PIN * VALVE_CHAN_MAX> result = {0};
     result.fill(0xcc);
+
+    ESP_ERROR_CHECK(esp_timer_early_init());
 
     while (1)
     {
@@ -148,13 +151,24 @@ namespace hardware
               ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", "1", chan_num, data);
             }
           }
+          std::uint64_t current_us = esp_timer_get_time();
+          static std::uint64_t last_us = 0;
+          std::uint64_t diff_us = current_us - last_us;
+
+          for (std::uint8_t i = VALVE_CHAN_1; i < VALVE_CHAN_MAX; ++i)
+          {
+            valve_controller[i].calculateControls(static_cast<std::uint32_t>(diff_us));
+            valve_controller[i].updateVoltage(static_cast<ledc_channel_t>(i), dir_pins[i]);
+          }
         }
+        /*
         else if (ret == ESP_ERR_TIMEOUT)
         {
           // We try to read  until API returns timeout, which means there's no available data
           ESP_LOGE(TAG, "ADC Read Timeout");
-          break;
+          vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
+        */
       }
       else
       {
@@ -173,7 +187,7 @@ namespace hardware
     adc_cali_line_fitting_config_t cali_config = {
         .unit_id = ADC_UNIT_1,
         .atten = ADC_ATTENUATION,
-        .bitwidth = ADC_BITWIDTH_13,
+        .bitwidth = ADC_BITWIDTH_12,
     };
     ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config, &adc_cali_handle));
 
@@ -188,7 +202,7 @@ namespace hardware
       adc_pattern[i].atten = ADC_ATTENUATION;
       adc_pattern[i].channel = adc_pins[i] & 0x7;
       adc_pattern[i].unit = ADC_UNIT_1;
-      adc_pattern[i].bit_width = ADC_BITWIDTH_13;
+      adc_pattern[i].bit_width = ADC_BITWIDTH_12;
 
       ESP_LOGI(TAG, "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
       ESP_LOGI(TAG, "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
@@ -198,7 +212,7 @@ namespace hardware
     adc_dig_cfg = {
         .pattern_num = VALVE_CHAN_MAX,
         .adc_pattern = adc_pattern._M_elems,
-        .sample_freq_hz = ADC_SAMPLE_RATE,
+        .sample_freq_hz = SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
         .conv_mode = ADC_CONV_SINGLE_UNIT_1,
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
     };
@@ -234,9 +248,9 @@ namespace hardware
     // Prepare and then apply the LEDC PWM timer configuration
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_12_BIT,
+        .duty_resolution = LEDC_TIMER_10_BIT,
         .timer_num = LEDC_TIMER_0,
-        .freq_hz = 20000,
+        .freq_hz = PWM_FREQUENCY,
         .clk_cfg = LEDC_AUTO_CLK};
     ledc_timer_config(&ledc_timer);
 
@@ -284,6 +298,27 @@ namespace hardware
   }
 
   /**
+   * @brief set the output voltage for the motor
+   */
+  void ValveController::updateVoltage(const std::uint8_t channel)
+  {
+    constexpr std::int32_t PWM_MAX = (1UL << LEDC_TIMER_10_BIT);
+    std::int32_t duty = (PWM_MAX / SUPPLY_VOLTAGE) * output_voltage_;
+    std::uint8_t dir = 0;
+
+    duty = std::min(duty, PWM_MAX);
+
+    if (duty < 0)
+    {
+      duty = PWM_MAX - std::max(duty, -PWM_MAX);
+      dir = 1;
+    }
+
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(channel), duty);
+    gpio_set_level(dir_pins[channel], dir);
+  }
+
+  /**
    * @brief Try to home the valve
    *
    * @retval true for successful competition of the homeing run. false for timeout
@@ -317,7 +352,7 @@ namespace hardware
       std::int32_t r_volt = (actual_current_ * series_resistance_) / 1000;
 
       // u = L * di /dt
-      std::int32_t i_volt = (series_inductance_ * (actual_current_ - last_current)) / (Tus * 1000);
+      std::int32_t i_volt = (series_inductance_ * (actual_current_ - last_current)) / Tus;
 
       // Bemf voltage as measurement for speed
       actual_speed_ = output_voltage_ - (r_volt + i_volt);

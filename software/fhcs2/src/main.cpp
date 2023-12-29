@@ -14,9 +14,18 @@ extern "C" void app_main()
 {
     hardware::Init();
 
+    hardware::valve_controller[hardware::VALVE_CHAN_2].setVoltage(3000000);
+
     while (1)
     {
-        hardware::SetBoardLed(!hardware::GetBoardLed());
+        static bool led = false;
+        led = !led;
+        hardware::SetBoardLed(led);
+        printf("pos:%ld\n speed:%ld\n current:%ld\nled:%d\n",
+               hardware::valve_controller[hardware::VALVE_CHAN_2].getPosition(),
+               hardware::valve_controller[hardware::VALVE_CHAN_2].getSpeed(),
+               hardware::valve_controller[hardware::VALVE_CHAN_2].getCurrent(),
+               hardware::GetBoardLed());
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }

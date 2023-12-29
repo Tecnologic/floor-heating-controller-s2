@@ -21,7 +21,7 @@ namespace hardware
    */
   extern bool GetBoardLed(void);
 
-  enum bdc_channels_e
+  enum valve_channels_e
   {
     VALVE_CHAN_1,
     VALVE_CHAN_2,
@@ -47,6 +47,34 @@ namespace hardware
   class ValveController
   {
   public:
+    /**
+     * @brief get the actual voltage supplied to the motor
+     *
+     * @retval actual voltage output of the bridge to the motor in micro Volts
+     */
+    inline std::int32_t getVoltage(void) { return (output_voltage_); };
+
+    /**
+     * @brief set the actual voltage supplied to the motor
+     *
+     * @param u_volt voltage output of the bridge to the motor in uV
+     */
+    inline void setVoltage(const std::uint32_t u_volt) { output_voltage_ = u_volt; };
+
+    /**
+     * @brief get the actual current of the motor
+     *
+     * @retval actual current of the motor
+     */
+    inline std::int32_t getCurrent(void) { return (actual_current_); };
+
+    /**
+     * @brief get the set current of the motor.
+     *
+     * @retval current setpoint
+     */
+    inline std::int32_t getSetCurrent(void) { return (set_current_); };
+
     /**
      * @brief set the current position setpoint of the valve
      *
@@ -217,6 +245,11 @@ namespace hardware
     }
 
     /**
+     * @brief set the output voltage for the motor
+     */
+    void updateVoltage(const std::uint8_t channel);
+
+    /**
      * @brief Try to home the valve
      *
      * @retval true for successful competition of the homeing run. false for timeout
@@ -230,6 +263,45 @@ namespace hardware
      */
     void calculateControls(std::uint32_t Tms);
 
+    ValveController() : // current measurement in uA
+                        actual_current_(0),
+                        // set current in uA
+                        set_current_(0),
+                        // current offset in uA
+                        offset_current_(0),
+                        // output voltage in uV
+                        output_voltage_(0),
+                        // offset samples needed just after boot
+                        offset_needed_(true),
+                        // actual position
+                        actual_position_(0),
+                        // set position
+                        set_position_(0),
+                        // set speed
+                        set_speed_(0),
+                        // reference speed
+                        ref_speed_(0),
+                        // actuall speed
+                        actual_speed_(0),
+                        // acceleration
+                        acceleration_(1000000),
+                        // homing current
+                        homing_current_(25000),
+                        // homing speed
+                        homing_speed_(1000000),
+                        // homing direction
+                        homing_direction_(false),
+                        // homing timeout
+                        homing_timeout_(10000),
+                        // current readings sum
+                        current_reading_sum_(0),
+                        // current reading count
+                        current_reading_count_(0),
+                        // Motor series resistance mOhm
+                        series_resistance_(42000),
+                        // Motor series inductance uH
+                        series_inductance_(16300){};
+
   protected:
     // current measurement in uA
     std::int32_t actual_current_;
@@ -237,7 +309,7 @@ namespace hardware
     std::int32_t set_current_;
     // current offset in uA
     std::int32_t offset_current_;
-    // output voltage in mV
+    // output voltage in uV
     std::int32_t output_voltage_;
     // offset samples needed just after boot
     bool offset_needed_;
@@ -249,7 +321,7 @@ namespace hardware
     std::int32_t set_speed_;
     // reference speed
     std::int32_t ref_speed_;
-    // actuall speed
+    // actual speed
     std::int32_t actual_speed_;
     // acceleration
     std::int32_t acceleration_;
@@ -258,7 +330,7 @@ namespace hardware
     // homing speed
     std::int32_t homing_speed_;
     // homing direction
-    std::int32_t homing_direction_;
+    bool homing_direction_;
     // homing timeout
     std::uint32_t homing_timeout_;
     // current readings sum
