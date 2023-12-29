@@ -158,7 +158,7 @@ namespace hardware
           for (std::uint8_t i = VALVE_CHAN_1; i < VALVE_CHAN_MAX; ++i)
           {
             valve_controller[i].calculateControls(static_cast<std::uint32_t>(diff_us));
-            valve_controller[i].updateVoltage(static_cast<ledc_channel_t>(i), dir_pins[i]);
+            valve_controller[i].updateVoltage(i);
           }
         }
         /*
