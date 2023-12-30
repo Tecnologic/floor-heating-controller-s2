@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <array>
+#include "controller.h"
 
 namespace hardware
 {
@@ -34,6 +35,9 @@ namespace hardware
     VALVE_CHAN_MAX,
   };
 
+  // Supply Voltage of the power bridge in uV
+  constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
+
   /**
    * @brief Valve drive position controller
    *
@@ -55,13 +59,6 @@ namespace hardware
     inline std::int32_t getVoltage(void) { return (output_voltage_); };
 
     /**
-     * @brief set the actual voltage supplied to the motor
-     *
-     * @param u_volt voltage output of the bridge to the motor in uV
-     */
-    inline void setVoltage(const std::uint32_t u_volt) { output_voltage_ = u_volt; };
-
-    /**
      * @brief get the actual current of the motor
      *
      * @retval actual current of the motor
@@ -74,6 +71,13 @@ namespace hardware
      * @retval current setpoint
      */
     inline std::int32_t getSetCurrent(void) { return (set_current_); };
+
+    /**
+     * @brief set the set current of the motor.
+     *
+     * @param current setpoint for the current controller
+     */
+    inline void setSetCurrent(const std::int32_t current) { set_current_ = current; };
 
     /**
      * @brief set the current position setpoint of the valve
@@ -245,11 +249,6 @@ namespace hardware
     }
 
     /**
-     * @brief set the output voltage for the motor
-     */
-    void updateVoltage(const std::uint8_t channel);
-
-    /**
      * @brief Try to home the valve
      *
      * @retval true for successful competition of the homeing run. false for timeout
@@ -263,44 +262,10 @@ namespace hardware
      */
     void calculateControls(std::uint32_t Tms);
 
-    ValveController() : // current measurement in uA
-                        actual_current_(0),
-                        // set current in uA
-                        set_current_(0),
-                        // current offset in uA
-                        offset_current_(0),
-                        // output voltage in uV
-                        output_voltage_(0),
-                        // offset samples needed just after boot
-                        offset_needed_(true),
-                        // actual position
-                        actual_position_(0),
-                        // set position
-                        set_position_(0),
-                        // set speed
-                        set_speed_(0),
-                        // reference speed
-                        ref_speed_(0),
-                        // actuall speed
-                        actual_speed_(0),
-                        // acceleration
-                        acceleration_(1000000),
-                        // homing current
-                        homing_current_(25000),
-                        // homing speed
-                        homing_speed_(1000000),
-                        // homing direction
-                        homing_direction_(false),
-                        // homing timeout
-                        homing_timeout_(10000),
-                        // current readings sum
-                        current_reading_sum_(0),
-                        // current reading count
-                        current_reading_count_(0),
-                        // Motor series resistance mOhm
-                        series_resistance_(42000),
-                        // Motor series inductance uH
-                        series_inductance_(16300){};
+    /**
+     * @brief standard constructor
+     */
+    ValveController(void);
 
   protected:
     // current measurement in uA
@@ -341,6 +306,8 @@ namespace hardware
     std::uint32_t series_resistance_;
     // Motor series inductance uH
     std::uint32_t series_inductance_;
+    // Pi Controller for motor current
+    control::pi pi_current_;
   };
 
   /**

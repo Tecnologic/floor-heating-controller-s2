@@ -1,3 +1,44 @@
+/*
+    (
+    )\ ) (
+   (()/( )\         (
+    /(_)|(_)(    (  )(
+   (_))_|_  )\   )\(()\
+   | |_ | |((_) ((_)((_)
+   | __)| / _ \/ _ \ '_|
+   |(|/(|_\___/\___/_)
+    )\())  (    ) ( /((        (  (
+   ((_)\  ))\( /( )\())\  (    )\))(
+    _((_)/((_)(_)|_))((_) )\ )((_))\
+   | || (_))((_)_| |_ (_)_(_/( (()(_)
+   | __ / -_) _` |  _|| | ' \)) _` |
+   |_||_\___\__,_|\__||(|_||_|\__, |
+      (      )    (    )\ )   )___/
+      )\  ( /((   )\  (()/(( /(
+    (((_) )\())( ((_)  /(_))(_))
+    )\___(_))(()\ _   (_))((_)
+   ((/ __| |_ ((_) |  / __|_  )
+    | (__|  _| '_| |  \__ \/ /
+     \___|\__|_| |_|  |___/___|
+
+  Floor Heating Controller S2  2024 Alexander <tecnologic86@gmail.com> Evers
+
+  This file is part of Floor Heating Controller S2.
+
+    Floor Heating Controller S2 is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -20,16 +61,14 @@ namespace hardware
 {
   // ESP Logging tag
   const char *TAG = "hardware";
-  // Supply Voltage of the power bridge in uV
-  constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
   // PWM frequency in Hz
   constexpr std::int32_t PWM_FREQUENCY = 20000;
   // ADC conversions per pin
   constexpr std::uint32_t ADC_CONV_PER_PIN = 30;
   // ADC Pin attenuation
-  constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_6;
+  constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_12;
   // Conversion factor from mV to uA
-  constexpr std::uint32_t MV_TO_UA = 139;
+  constexpr std::uint32_t MV_TO_UA = 70;
   // Number of offset samples
   constexpr std::uint32_t OFFSET_SAMPLES = 1000;
   // TASK notification index
@@ -79,7 +118,7 @@ namespace hardware
    */
   void SetBoardLed(const bool on)
   {
-    ESP_ERROR_CHECK(gpio_set_level(LED_PIN, on));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_level(LED_PIN, on));
   }
 
   /**
@@ -91,6 +130,14 @@ namespace hardware
   {
     return (gpio_get_level(LED_PIN));
   }
+
+  /**
+   * @brief set the output voltage for the motor
+   *
+   * @param channel ledc pwm channel
+   * @param u_volt output voltage to set at bridge output
+   */
+  void updateVoltage(const std::uint8_t channel, const std::int32_t u_volt);
 
   /**
    * @brief ISR Function that will be triggered when ADC conversion is done
@@ -158,7 +205,7 @@ namespace hardware
           for (std::uint8_t i = VALVE_CHAN_1; i < VALVE_CHAN_MAX; ++i)
           {
             valve_controller[i].calculateControls(static_cast<std::uint32_t>(diff_us));
-            valve_controller[i].updateVoltage(i);
+            updateVoltage(i, valve_controller[i].getVoltage());
           }
         }
         /*
@@ -239,9 +286,9 @@ namespace hardware
     // set as output mode
     io_conf.mode = GPIO_MODE_OUTPUT;
     // disable pull-down mode
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE,
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     // disable pull-up mode
-        io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     // bit mask of the pins that you want to set
     io_conf.pin_bit_mask |= (1ULL << LED_PIN);
 
@@ -252,7 +299,7 @@ namespace hardware
         .timer_num = LEDC_TIMER_0,
         .freq_hz = PWM_FREQUENCY,
         .clk_cfg = LEDC_AUTO_CLK};
-    ledc_timer_config(&ledc_timer);
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
 
     for (std::uint32_t i = 0; i < VALVE_CHAN_MAX; ++i)
     {
@@ -270,11 +317,14 @@ namespace hardware
           .duty = 0,
           .hpoint = 0,
           .flags = {0}};
-      ledc_channel_config(&ledc_channel);
+      ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
     }
 
     // configure GPIO with the given settings
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+    // install fade service for duty and high point update.
+    ESP_ERROR_CHECK(ledc_fade_func_install(0));
   }
 
   /**
@@ -299,24 +349,75 @@ namespace hardware
 
   /**
    * @brief set the output voltage for the motor
+   *
+   * @param channel ledc pwm channel
+   * @param u_volt output voltage to set at bridge output
    */
-  void ValveController::updateVoltage(const std::uint8_t channel)
+  void updateVoltage(const std::uint8_t channel, const std::int32_t u_volt)
   {
     constexpr std::int32_t PWM_MAX = (1UL << LEDC_TIMER_10_BIT);
-    std::int32_t duty = (PWM_MAX / SUPPLY_VOLTAGE) * output_voltage_;
+    std::int32_t duty = (PWM_MAX * (u_volt / 1000)) / (SUPPLY_VOLTAGE / 1000);
     std::uint8_t dir = 0;
 
     duty = std::min(duty, PWM_MAX);
 
     if (duty < 0)
     {
-      duty = PWM_MAX - std::max(duty, -PWM_MAX);
+      duty = PWM_MAX + std::max(duty, -PWM_MAX);
       dir = 1;
     }
 
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(channel), duty);
-    gpio_set_level(dir_pins[channel], dir);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_and_update(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(channel), duty, 0));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_level(dir_pins[channel], dir));
+
+    // if (channel == 1)
+    // {
+    //   printf(">duty:%ld\n>hpoint:%ld\n", duty, hpoint);
+    // }
   }
+
+  /**
+   * @brief standard constructor
+   */
+  ValveController::ValveController() : // current measurement in uA
+                                       actual_current_(0),
+                                       // set current in uA
+                                       set_current_(0),
+                                       // current offset in uA
+                                       offset_current_(0),
+                                       // output voltage in uV
+                                       output_voltage_(0),
+                                       // offset samples needed just after boot
+                                       offset_needed_(true),
+                                       // actual position
+                                       actual_position_(0),
+                                       // set position
+                                       set_position_(0),
+                                       // set speed
+                                       set_speed_(0),
+                                       // reference speed
+                                       ref_speed_(0),
+                                       // actuall speed
+                                       actual_speed_(0),
+                                       // acceleration
+                                       acceleration_(1000000),
+                                       // homing current
+                                       homing_current_(25000),
+                                       // homing speed
+                                       homing_speed_(1000000),
+                                       // homing direction
+                                       homing_direction_(false),
+                                       // homing timeout
+                                       homing_timeout_(10000),
+                                       // current readings sum
+                                       current_reading_sum_(0),
+                                       // current reading count
+                                       current_reading_count_(0),
+                                       // Motor series resistance mOhm
+                                       series_resistance_(42000),
+                                       // Motor series inductance uH
+                                       series_inductance_(16300),
+                                       pi_current_(1, 1000, SUPPLY_VOLTAGE, -SUPPLY_VOLTAGE){};
 
   /**
    * @brief Try to home the valve
@@ -345,20 +446,28 @@ namespace hardware
     }
     else
     {
-      static std::int32_t last_current = 0;
+      std::int32_t last_current = actual_current_;
       actual_current_ = getReading() - offset_current_;
+      std::int32_t ff = (set_current_ * series_resistance_) / 1000;
+      output_voltage_ = pi_current_.Calculate(set_current_, actual_current_, ff, Tus);
 
-      // voltage across the series resistance
-      std::int32_t r_volt = (actual_current_ * series_resistance_) / 1000;
+      if (std::abs(actual_current_) > 1000)
+      {
+        // voltage across the series resistance in uV
+        std::int32_t r_volt = (actual_current_ * series_resistance_) / 1000;
+        // u = L * di /dt
+        std::int32_t i_volt = (series_inductance_ * (actual_current_ - last_current)) / Tus;
 
-      // u = L * di /dt
-      std::int32_t i_volt = (series_inductance_ * (actual_current_ - last_current)) / Tus;
+        // Bemf voltage as measurement for speed
+        actual_speed_ = output_voltage_ - (r_volt + i_volt);
 
-      // Bemf voltage as measurement for speed
-      actual_speed_ = output_voltage_ - (r_volt + i_volt);
-
-      // integrate to position
-      actual_position_ += (actual_speed_ * 1000) / Tus;
+        // integrate to position
+        actual_position_ += (actual_speed_ * 1000) / Tus;
+      }
+      else
+      {
+        actual_speed_ = 0;
+      }
     }
   }
 
