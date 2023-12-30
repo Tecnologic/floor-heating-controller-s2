@@ -356,7 +356,7 @@ namespace hardware
   void updateVoltage(const std::uint8_t channel, const std::int32_t u_volt)
   {
     constexpr std::int32_t PWM_MAX = (1UL << LEDC_TIMER_10_BIT);
-    std::int32_t duty = (PWM_MAX * (u_volt / 1000)) / (SUPPLY_VOLTAGE / 1000);
+    std::int32_t duty = -(PWM_MAX * (u_volt / 1000)) / (SUPPLY_VOLTAGE / 1000);
     std::uint8_t dir = 0;
 
     duty = std::min(duty, PWM_MAX);
@@ -417,7 +417,8 @@ namespace hardware
                                        series_resistance_(42000),
                                        // Motor series inductance uH
                                        series_inductance_(16300),
-                                       pi_current_(1, 1000, SUPPLY_VOLTAGE, -SUPPLY_VOLTAGE){};
+                                       // Current controller
+                                       pi_current_(42000, 500, SUPPLY_VOLTAGE, -SUPPLY_VOLTAGE){};
 
   /**
    * @brief Try to home the valve
@@ -448,7 +449,9 @@ namespace hardware
     {
       std::int32_t last_current = actual_current_;
       actual_current_ = getReading() - offset_current_;
-      std::int32_t ff = (set_current_ * series_resistance_) / 1000;
+
+      std::int32_t ff = 0; //(set_current_ * series_resistance_) / 1000;
+
       output_voltage_ = pi_current_.Calculate(set_current_, actual_current_, ff, Tus);
 
       if (std::abs(actual_current_) > 1000)
@@ -462,7 +465,7 @@ namespace hardware
         actual_speed_ = output_voltage_ - (r_volt + i_volt);
 
         // integrate to position
-        actual_position_ += (actual_speed_ * 1000) / Tus;
+        actual_position_ += (actual_speed_ * 1000) / static_cast<std::int32_t>(Tus);
       }
       else
       {

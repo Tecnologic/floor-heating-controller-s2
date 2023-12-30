@@ -303,9 +303,9 @@ namespace hardware
     // current reading count
     std::uint32_t current_reading_count_;
     // Motor series resistance mOhm
-    std::uint32_t series_resistance_;
+    std::int32_t series_resistance_;
     // Motor series inductance uH
-    std::uint32_t series_inductance_;
+    std::int32_t series_inductance_;
     // Pi Controller for motor current
     control::pi pi_current_;
   };

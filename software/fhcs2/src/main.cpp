@@ -72,13 +72,13 @@ extern "C" void app_main()
 
         if ((counter % 300) == 0)
         {
-            hardware::valve_controller[chan].setSetCurrent(3000);
+            hardware::valve_controller[chan].setSetCurrent(10000);
             led = true;
         }
 
         if ((counter % 600) == 0)
         {
-            hardware::valve_controller[chan].setSetCurrent(-3000);
+            hardware::valve_controller[chan].setSetCurrent(-10000);
             led = false;
         }
     }
