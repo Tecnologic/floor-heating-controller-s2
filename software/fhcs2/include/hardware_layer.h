@@ -3,11 +3,15 @@
 
 #include <cstdint>
 #include <array>
+#include "driver/ledc.h"
+#include "driver/gpio.h"
+#include "esp_adc/adc_continuous.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "controller.h"
 
 namespace hardware
 {
-
   /**
    * @brief set the level of the board led
    *
@@ -21,19 +25,6 @@ namespace hardware
    * @retval true for led on and false for led off
    */
   extern bool GetBoardLed(void);
-
-  enum valve_channels_e
-  {
-    VALVE_CHAN_1,
-    VALVE_CHAN_2,
-    VALVE_CHAN_3,
-    VALVE_CHAN_4,
-    VALVE_CHAN_5,
-    VALVE_CHAN_6,
-    VALVE_CHAN_7,
-    VALVE_CHAN_8,
-    VALVE_CHAN_MAX,
-  };
 
   // Supply Voltage of the power bridge in uV
   constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
@@ -109,6 +100,13 @@ namespace hardware
      * @retval actual set speed, output of position control loop
      */
     inline std::int32_t getSetSpeed(void) { return (set_speed_); };
+
+    /**
+     * @brief set the actual speed setpoint
+     *
+     * @param speed new set speed
+     */
+    inline std::int32_t setSetSpeed(const std::int32_t speed) { set_speed_ = speed; };
 
     /**
      * @brief get the actual speed reference value
@@ -265,9 +263,47 @@ namespace hardware
     /**
      * @brief standard constructor
      */
-    ValveController(void);
+    ValveController(const gpio_num_t cur_pin, const gpio_num_t fwd_pin, const gpio_num_t bwd_pin);
 
   protected:
+    // ESP Logging tag
+    const char *TAG;
+    // PWM frequency in Hz
+    const std::int32_t PWM_FREQUENCY;
+    // ADC conversions per second
+    const std::uint32_t ADC_CONV_PER_SEC;
+    // ADC conversions per pin
+    const std::uint32_t ADC_CONV_PER_PIN;
+    // ADC Pin attenuation
+    const adc_atten_t ADC_ATTENUATION;
+    // Conversion factor from mV to uA
+    const std::int32_t MV_TO_UA;
+    // adc input gpio for current measurement
+    const gpio_num_t ADC_PIN;
+    // pwm output gpio for forward rotation.
+    const gpio_num_t FWD_PIN;
+    // pwm output gpio for backwards rotation
+    const gpio_num_t BWD_PIN;
+    // handle to adc instance
+    adc_continuous_handle_t adc_handle_ = nullptr;
+    // config of the adc unit
+    adc_continuous_handle_cfg_t adc_config_;
+    // config of the adcs dig unit
+    adc_continuous_config_t adc_dig_cfg_;
+    // adc channel pattern config
+    adc_digi_pattern_config_t adc_pattern_;
+    // adc calibration config
+    adc_cali_line_fitting_config_t cali_config_;
+    // adc calibration handle
+    adc_cali_handle_t adc_cali_handle_ = nullptr;
+    // adc callback configuration
+    adc_continuous_evt_cbs_t adc_callbacks_;
+    // pwm timer configuration
+    ledc_timer_config_t ledc_timer_config_;
+    // pwm channel for forward rotation
+    ledc_channel_config_t ledc_channel_fwd_;
+    // pwm channel for backward rotation
+    ledc_channel_config_t ledc_channel_bwd_;
     // current measurement in uA
     std::int32_t actual_current_;
     // set current in uA
@@ -307,17 +343,34 @@ namespace hardware
     // Motor series inductance uH
     std::int32_t series_inductance_;
     // Pi Controller for motor current
-    control::pi pi_current_;
+    control::pi ctrl_current_;
+    // Pi Controller for motor speed
+    control::pi ctrl_speed_;
+    // Pi Controller for motor position
+    control::pi ctrl_position_;
+
+    /**
+     * @brief setup the adc for this valve instance
+     *
+     * This function does the basic init of the ADC and needs to be called just once
+     */
+    void initADC(void);
+
+    /**
+     * @brief setup the adc for this valve instance
+     */
+    void startADC(void);
+
+    /**
+     * @brief change the adc for this valve instance
+     */
+    void deinitADC(void);
   };
 
   /**
    * @brief initialize hardware components
    */
   extern void Init(void);
-
-  // valve controller instances
-  extern std::array<ValveController, VALVE_CHAN_MAX> valve_controller;
-
 } /* namespace hardware */
 
 #endif /* _HARDWARE_LAYER_H_ */

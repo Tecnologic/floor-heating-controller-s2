@@ -96,13 +96,16 @@ namespace control
 			output = output_unlimited;
 		}
 
-		// anti windup strategy is only to limit if
-		// integration of the error takes the output
-		// more over the limit.
-		// if not we are free to integrate
-		if ((output == output_unlimited) || ((error * output_unlimited) <= 0))
+		if (tn > 0)
 		{
-			error_sum += (error * kp * Ts) / (tn * 1000);
+			// anti windup strategy is only to limit if
+			// integration of the error takes the output
+			// more over the limit.
+			// if not we are free to integrate
+			if ((output == output_unlimited) || ((error * output_unlimited) <= 0))
+			{
+				error_sum += (error * kp * Ts) / (tn * 1000);
+			}
 		}
 		return output;
 	}
