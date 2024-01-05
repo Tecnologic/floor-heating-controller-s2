@@ -8,6 +8,7 @@
 #include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "freertos/semphr.h"
 #include "controller.h"
 
 namespace hardware
@@ -42,6 +43,19 @@ namespace hardware
   class ValveController
   {
   public:
+    // Channel definitions
+    enum channels_e
+    {
+      CHANNEL_1,
+      CHANNEL_2,
+      CHANNEL_3,
+      CHANNEL_4,
+      CHANNEL_5,
+      CHANNEL_6,
+      CHANNEL_7,
+      CHANNEL_8,
+      CHANNEL_MAX,
+    };
     /**
      * @brief get the actual voltage supplied to the motor
      *
@@ -228,25 +242,6 @@ namespace hardware
     inline std::int32_t getMotorSeriesInductance(void) { return (series_inductance_); };
 
     /**
-     * @brief add a adc reading in micro ampere
-     */
-    inline void addReading(std::int32_t ua)
-    {
-      current_reading_sum_ += ua;
-      current_reading_count_++;
-    }
-
-    /**
-     * @brief add a adc reading in micro ampere
-     */
-    inline std::int32_t getReading(void)
-    {
-      std::int32_t current_reading = current_reading_sum_ / current_reading_count_;
-      current_reading_sum_ = current_reading_count_ = 0;
-      return (current_reading);
-    }
-
-    /**
      * @brief Try to home the valve
      *
      * @retval true for successful competition of the homeing run. false for timeout
@@ -269,30 +264,54 @@ namespace hardware
     // ESP Logging tag
     const char *TAG;
     // PWM frequency in Hz
-    static const std::int32_t PWM_FREQUENCY;
+    static constexpr std::int32_t PWM_FREQUENCY = 16000;
     // ADC conversions per second
-    static const std::uint32_t ADC_CONV_PER_SEC;
+    static constexpr std::uint32_t ADC_CONV_PER_SEC = SOC_ADC_SAMPLE_FREQ_THRES_HIGH;
     // ADC conversions per pin
-    static const std::uint32_t ADC_CONV_PER_PIN;
+    static constexpr std::uint32_t ADC_CONV_PER_PIN = (ADC_CONV_PER_SEC / PWM_FREQUENCY) * 2;
     // ADC Pin attenuation
-    static const adc_atten_t ADC_ATTENUATION;
+    static constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_12;
     // Conversion factor from mV to uA
-    static const std::int32_t MV_TO_UA;
+    static constexpr std::int32_t MV_TO_UA = 70;
+
+    // config of the adc unit
+    static constexpr adc_continuous_handle_cfg_t ADC_CONFIG = {
+        .max_store_buf_size = ADC_CONV_PER_PIN * 4 * SOC_ADC_DIGI_RESULT_BYTES,
+        .conv_frame_size = ADC_CONV_PER_PIN * SOC_ADC_DIGI_RESULT_BYTES,
+    };
+    // adc calibration config
+    static constexpr adc_cali_line_fitting_config_t ADC_CALI_CONFIG = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTENUATION,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+
+    // adc callback configuration
+    static constexpr adc_continuous_evt_cbs_t ADC_CALLBACKS = {
+        .on_conv_done = ConvDoneCB,
+        .on_pool_ovf = nullptr,
+    };
+    // pwm timer configuration
+    static constexpr ledc_timer_config_t LEDC_TIMER_CONFIG = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = PWM_FREQUENCY,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
 
     // handle to adc instance
-    static adc_continuous_handle_t adc_handle_ = nullptr;
-    // config of the adc unit
-    static adc_continuous_handle_cfg_t adc_config_;
-    // adc calibration config
-    static adc_cali_line_fitting_config_t cali_config_;
+    static adc_continuous_handle_t adc_handle_;
     // adc calibration handle
-    static adc_cali_handle_t adc_cali_handle_ = nullptr;
-    // adc callback configuration
-    static adc_continuous_evt_cbs_t adc_callbacks_;
-    // pwm timer configuration
-    static ledc_timer_config_t ledc_timer_config_;
+    static adc_cali_handle_t adc_cali_handle_;
+    // adc result buffer
+    static std::array<uint8_t, ADC_CONFIG.conv_frame_size> adc_result_;
+    // mutex to interlock hardware usage
+    static SemaphoreHandle_t hardware_mutex_;
+    // Reference to the instance of the class which has currently taken that mutex
+    static ValveController &active_instance_;
 
-        // adc input gpio for current measurement
+    // adc input gpio for current measurement
     const gpio_num_t ADC_PIN;
     // pwm output gpio for forward rotation.
     const gpio_num_t FWD_PIN;
@@ -300,14 +319,14 @@ namespace hardware
     const gpio_num_t BWD_PIN;
 
     // config of the adcs dig unit
-    adc_continuous_config_t adc_dig_cfg_;
+    const adc_continuous_config_t adc_dig_cfg_;
     // adc channel pattern config
-    adc_digi_pattern_config_t adc_pattern_;
+    const adc_digi_pattern_config_t adc_pattern_;
 
     // pwm channel for forward rotation
-    ledc_channel_config_t ledc_channel_fwd_;
+    const ledc_channel_config_t ledc_channel_fwd_;
     // pwm channel for backward rotation
-    ledc_channel_config_t ledc_channel_bwd_;
+    const ledc_channel_config_t ledc_channel_bwd_;
 
     // current measurement in uA
     std::int32_t actual_current_;
@@ -355,11 +374,11 @@ namespace hardware
     control::pi ctrl_position_;
 
     /**
-     * @brief setup the adc in general
+     * @brief setup the adc and pwm in general
      *
-     * This function does the basic init of the ADC and needs to be called just once
+     * This function does the basic init of the ADC and LEDC pwm unit and needs to be called just once
      */
-    static void initADC(void);
+    static void init(void);
 
     /**
      * @brief setup the adc for this valve instance and start measuring
@@ -372,11 +391,9 @@ namespace hardware
     void stopADC(void);
 
     /**
-     * @brief setup the pwm in general
-     *
-     * This function does the basic init of the LEDC PWM unit and needs to be called just once
+     * @brief get a adc reading in micro ampere
      */
-    static void initPWM(void);
+    std::int32_t getReading(void);
 
     /**
      * @brief setup the PWM Channels for this valve instance
@@ -387,6 +404,15 @@ namespace hardware
      * @brief Stop the PWM for this valve instance
      */
     void stopPWM(void);
+
+    /**
+     * @brief set the PWM according to the requested output voltage
+     */
+    void updateVoltage(void);
+
+    /* internal friend functions */
+    friend void Init(void);
+    friend void taskControl(void *parameter);
   };
 
   /**
