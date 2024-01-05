@@ -61,7 +61,8 @@ namespace hardware
   constexpr std::uint32_t TASK_NOTIFICATION_INDEX = 1;
 
 // Pin for buildin LED
-#ifdef S2MINI
+#if
+def S2MINI
   constexpr gpio_num_t LED_PIN = GPIO_NUM_15;
 #else
   constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
@@ -89,6 +90,50 @@ namespace hardware
   {
     return (gpio_get_level(LED_PIN));
   }
+
+  /**
+    * @brief setup the adc in general
+    *
+    * This function does the basic init of the ADC and needs to be called just once
+    */
+  void ValveController::initADC(void)
+  {
+    
+  }
+
+    /**
+     * @brief setup the adc for this valve instance and start measuring
+     */
+    void ValveController::startADC(void)
+    {
+      
+    }
+
+
+    /**
+     * @brief stop the adc for this instance
+     */
+    void stopADC(void);
+
+    /**
+     * @brief setup the pwm in general
+     *
+     * This function does the basic init of the LEDC PWM unit and needs to be called just once
+     */
+    static void initPWM(void);
+
+    /**
+     * @brief setup the PWM Channels for this valve instance
+     */
+    void startPWM(void);
+
+    /**
+     * @brief Stop the PWM for this valve instance
+     */
+    void stopPWM(void);
+
+
+
 
   /**
    * @brief set the output voltage for the motor
@@ -183,6 +228,7 @@ namespace hardware
       }
     }
   }
+
 
   /**
    * @brief setup adc conversion

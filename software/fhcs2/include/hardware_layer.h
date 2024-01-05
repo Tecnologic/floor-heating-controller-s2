@@ -269,41 +269,46 @@ namespace hardware
     // ESP Logging tag
     const char *TAG;
     // PWM frequency in Hz
-    const std::int32_t PWM_FREQUENCY;
+    static const std::int32_t PWM_FREQUENCY;
     // ADC conversions per second
-    const std::uint32_t ADC_CONV_PER_SEC;
+    static const std::uint32_t ADC_CONV_PER_SEC;
     // ADC conversions per pin
-    const std::uint32_t ADC_CONV_PER_PIN;
+    static const std::uint32_t ADC_CONV_PER_PIN;
     // ADC Pin attenuation
-    const adc_atten_t ADC_ATTENUATION;
+    static const adc_atten_t ADC_ATTENUATION;
     // Conversion factor from mV to uA
-    const std::int32_t MV_TO_UA;
-    // adc input gpio for current measurement
+    static const std::int32_t MV_TO_UA;
+
+    // handle to adc instance
+    static adc_continuous_handle_t adc_handle_ = nullptr;
+    // config of the adc unit
+    static adc_continuous_handle_cfg_t adc_config_;
+    // adc calibration config
+    static adc_cali_line_fitting_config_t cali_config_;
+    // adc calibration handle
+    static adc_cali_handle_t adc_cali_handle_ = nullptr;
+    // adc callback configuration
+    static adc_continuous_evt_cbs_t adc_callbacks_;
+    // pwm timer configuration
+    static ledc_timer_config_t ledc_timer_config_;
+
+        // adc input gpio for current measurement
     const gpio_num_t ADC_PIN;
     // pwm output gpio for forward rotation.
     const gpio_num_t FWD_PIN;
     // pwm output gpio for backwards rotation
     const gpio_num_t BWD_PIN;
-    // handle to adc instance
-    adc_continuous_handle_t adc_handle_ = nullptr;
-    // config of the adc unit
-    adc_continuous_handle_cfg_t adc_config_;
+
     // config of the adcs dig unit
     adc_continuous_config_t adc_dig_cfg_;
     // adc channel pattern config
     adc_digi_pattern_config_t adc_pattern_;
-    // adc calibration config
-    adc_cali_line_fitting_config_t cali_config_;
-    // adc calibration handle
-    adc_cali_handle_t adc_cali_handle_ = nullptr;
-    // adc callback configuration
-    adc_continuous_evt_cbs_t adc_callbacks_;
-    // pwm timer configuration
-    ledc_timer_config_t ledc_timer_config_;
+
     // pwm channel for forward rotation
     ledc_channel_config_t ledc_channel_fwd_;
     // pwm channel for backward rotation
     ledc_channel_config_t ledc_channel_bwd_;
+
     // current measurement in uA
     std::int32_t actual_current_;
     // set current in uA
@@ -350,21 +355,38 @@ namespace hardware
     control::pi ctrl_position_;
 
     /**
-     * @brief setup the adc for this valve instance
+     * @brief setup the adc in general
      *
      * This function does the basic init of the ADC and needs to be called just once
      */
-    void initADC(void);
+    static void initADC(void);
 
     /**
-     * @brief setup the adc for this valve instance
+     * @brief setup the adc for this valve instance and start measuring
      */
     void startADC(void);
 
     /**
-     * @brief change the adc for this valve instance
+     * @brief stop the adc for this instance
      */
-    void deinitADC(void);
+    void stopADC(void);
+
+    /**
+     * @brief setup the pwm in general
+     *
+     * This function does the basic init of the LEDC PWM unit and needs to be called just once
+     */
+    static void initPWM(void);
+
+    /**
+     * @brief setup the PWM Channels for this valve instance
+     */
+    void startPWM(void);
+
+    /**
+     * @brief Stop the PWM for this valve instance
+     */
+    void stopPWM(void);
   };
 
   /**
