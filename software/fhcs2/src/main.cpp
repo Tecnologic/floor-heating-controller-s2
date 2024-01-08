@@ -25,10 +25,10 @@
 
     This file is part of Floor Heating Controller S2.
 
-        Floor Heating Controller S2 is free software: you can redistribute it and/or modify
-        it under the terms of the GNU General Public License as published by
-        the Free Software Foundation, either version 3 of the License, or
-        (at your option) any later version.
+        Floor Heating Controller S2 is free software: you can redistribute it
+   and/or modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation, either version 3 of the License,
+   or (at your option) any later version.
 
         This program is distributed in the hope that it will be useful,
         but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -39,47 +39,54 @@
         along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <cstdint>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "string.h"
+#include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "hardware_layer.h"
-#include "driver/gpio.h"
+#include "string.h"
+#include <cstdint>
+#include <stdio.h>
 
 const char *TAG = "fhcs2";
 
-extern "C" void app_main()
-{
-    hardware::Init();
+extern "C" void app_main() {
+  hardware::Init();
 
-    while (1)
-    {
-        static std::uint32_t counter = 0;
-        static bool led = false;
-        constexpr hardware::valve_channels_e chan = hardware::VALVE_CHAN_3;
+  while (1) {
+    static std::uint32_t counter = 0;
+    static bool led = false;
+    constexpr hardware::ValveController::channels_e chan =
+        hardware::ValveController::CHANNEL_2;
 
-        hardware::SetBoardLed(led);
-        printf(">pos:%ld\n>speed:%ld\n>current:%ld\n>voltage:%ld\n",
-               hardware::valve_controller[chan].getPosition(),
-               hardware::valve_controller[chan].getSpeed(),
-               hardware::valve_controller[chan].getCurrent(),
-               hardware::valve_controller[chan].getVoltage());
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        counter++;
+    hardware::SetBoardLed(led);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    counter++;
 
-        if ((counter % 300) == 0)
-        {
-            hardware::valve_controller[chan].setSetCurrent(10000);
-            led = true;
-        }
+    hardware::valves[chan].move(1);
+    std::int32_t voltage = hardware::valves[chan].getVoltage();
+    static std::int32_t step = 30;
 
-        if ((counter % 600) == 0)
-        {
-            hardware::valve_controller[chan].setSetCurrent(-10000);
-            led = false;
-        }
+    voltage += step;
+    if (voltage > hardware::SUPPLY_VOLTAGE) {
+      step = -step;
+      voltage = hardware::SUPPLY_VOLTAGE;
     }
+
+    if (voltage < -hardware::SUPPLY_VOLTAGE) {
+      step = -step;
+      voltage = -hardware::SUPPLY_VOLTAGE;
+    }
+
+    if ((counter % 300) == 0) {
+      led = true;
+    }
+
+    if ((counter % 600) == 0) {
+      led = false;
+    }
+
+    hardware::valves[chan].setVoltage(voltage);
+  }
 }
