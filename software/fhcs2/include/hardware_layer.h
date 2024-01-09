@@ -7,7 +7,9 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_continuous.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <array>
 #include <cstdint>
 
@@ -29,9 +31,8 @@ extern bool GetBoardLed(void);
 /**
  * @brief ISR Function that will be triggered when ADC conversion is done
  */
-extern bool IRAM_ATTR ConvDoneCB(adc_continuous_handle_t handle,
-                          const adc_continuous_evt_data_t *edata,
-                          void *user_data);
+extern bool ConvDoneCB(adc_continuous_handle_t handle,
+                       const adc_continuous_evt_data_t *edata, void *user_data);
 
 // Supply Voltage of the power bridge in uV
 constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
@@ -306,7 +307,7 @@ public:
 
 protected:
   // ESP Logging tag
-  const char *TAG;
+  static const char *TAG;
   // PWM frequency in Hz
   static constexpr std::int32_t PWM_FREQUENCY = 16000;
   // ADC conversions per second
@@ -356,6 +357,8 @@ protected:
   static SemaphoreHandle_t hardware_mutex_;
   // Reference to the instance of the class which has currently taken that mutex
   static ValveController *active_instance_;
+  // Counter of instances
+  static std::uint32_t instance_count_;
 
   // adc input gpio for current measurement
   const gpio_num_t ADC_PIN;
@@ -367,13 +370,15 @@ protected:
   // config of the adcs dig unit
   const adc_continuous_config_t adc_dig_cfg_;
   // adc channel pattern config
-  const adc_digi_pattern_config_t adc_pattern_;
+  adc_digi_pattern_config_t adc_pattern_;
 
   // pwm channel for forward rotation
   const ledc_channel_config_t ledc_channel_fwd_;
   // pwm channel for backward rotation
   const ledc_channel_config_t ledc_channel_bwd_;
 
+  // Counter of instances
+  std::uint32_t instance_index_;
   // current measurement in uA
   std::int32_t actual_current_;
   // set current in uA
@@ -479,7 +484,6 @@ protected:
  * @brief initialize hardware components
  */
 extern void Init(void);
-
 
 extern std::array<ValveController, ValveController::CHANNEL_MAX> valves;
 } /* namespace hardware */

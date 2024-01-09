@@ -44,8 +44,6 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "soc/soc_caps.h"
 #include <algorithm>
 #include <cstdint>
@@ -91,23 +89,28 @@ bool GetBoardLed(void) { return (gpio_get_level(LED_PIN)); }
  * be called just once
  */
 void ValveController::init(void) {
+  ESP_LOGI(TAG, "Started Init");
+
   /* Create a mutex type semaphore for shared hardware mutal exclusion */
   hardware_mutex_ = xSemaphoreCreateMutex();
-
+  ESP_LOGI(TAG, "Mutex initialized");
   ESP_ERROR_CHECK(
       adc_cali_create_scheme_line_fitting(&ADC_CALI_CONFIG, &adc_cali_handle_));
   ESP_ERROR_CHECK(adc_continuous_new_handle(&ADC_CONFIG, &adc_handle_));
   ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(
       adc_handle_, &ADC_CALLBACKS, NULL));
+  ESP_LOGI(TAG, "ADC Initialized");
 
   ESP_ERROR_CHECK(ledc_timer_config(&LEDC_TIMER_CONFIG));
   ESP_ERROR_CHECK(ledc_fade_func_install(0));
+  ESP_LOGI(TAG, "PWM Initialized");
 }
 
 /**
  * @brief setup the adc for this valve instance and start measuring
  */
 void ValveController::startADC(void) {
+  ESP_LOGI(TAG, "Start ADC %lu", instance_index_);
   ESP_ERROR_CHECK(adc_continuous_config(adc_handle_, &adc_dig_cfg_));
   ESP_ERROR_CHECK(adc_continuous_start(adc_handle_));
 }
@@ -116,6 +119,7 @@ void ValveController::startADC(void) {
  * @brief stop the adc for this instance
  */
 void ValveController::stopADC(void) {
+  ESP_LOGI(TAG, "Stop ADC %lu", instance_index_);
   ESP_ERROR_CHECK(adc_continuous_stop(adc_handle_));
 }
 
@@ -123,6 +127,7 @@ void ValveController::stopADC(void) {
  * @brief setup the PWM Channels for this valve instance
  */
 void ValveController::startPWM(void) {
+  ESP_LOGI(TAG, "Start PWM %lu", instance_index_);
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_fwd_));
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_bwd_));
 }
@@ -131,6 +136,7 @@ void ValveController::startPWM(void) {
  * @brief Stop the PWM for this valve instance
  */
 void ValveController::stopPWM(void) {
+  ESP_LOGI(TAG, "Stop ADC %lu", instance_index_);
   ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
   ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 0);
 }
@@ -177,21 +183,19 @@ void taskControl(void *parameter) {
 
     if (notification_value) {
 
-      if (ValveController::active_instance_)
-      {
+      if (ValveController::active_instance_) {
 
-std::uint64_t current_us = esp_timer_get_time();
-      static std::uint64_t last_us = 0;
-      std::uint64_t diff_us = current_us - last_us;
+        std::uint64_t current_us = esp_timer_get_time();
+        static std::uint64_t last_us = 0;
+        std::uint64_t diff_us = current_us - last_us;
 
-      ValveController::active_instance_->calculateControls(diff_us);
-
+        ValveController::active_instance_->calculateControls(diff_us);
       }
 
-      
     } else {
       // Timeout
-      ESP_LOGW(TAG, "ADC Timeout");
+      ESP_LOGW(TAG, "ADC Timeout Instance %lu",
+               ValveController::active_instance_->instance_index_);
     }
   }
 }
@@ -328,9 +332,7 @@ std::int32_t ValveController::getReading(void) {
 ValveController::ValveController(const gpio_num_t cur_pin,
                                  const gpio_num_t fwd_pin,
                                  const gpio_num_t bwd_pin)
-    : // ESP Logging tag
-      TAG("valve"),
-      // adc input gpio for current measurement
+    : // adc input gpio for current measurement
       ADC_PIN(cur_pin),
       // pwm output gpio for forward rotation.
       FWD_PIN(fwd_pin),
@@ -347,7 +349,7 @@ ValveController::ValveController(const gpio_num_t cur_pin,
       // adc channel pattern config
       adc_pattern_{
           .atten = ADC_ATTENUATION,
-          .channel = ADC_PIN & 0x7,
+          .channel = static_cast<std::uint8_t>(ADC_PIN & 0x7),
           .unit = ADC_UNIT_1,
           .bit_width = ADC_BITWIDTH_12,
       },
@@ -373,6 +375,8 @@ ValveController::ValveController(const gpio_num_t cur_pin,
           .hpoint = (1U << LEDC_TIMER_CONFIG.duty_resolution) / 2,
           .flags = {0},
       },
+      // Counter of instances
+      instance_index_(instance_count_),
       // current measurement in uA
       actual_current_(0),
       // set current in uA
@@ -416,7 +420,9 @@ ValveController::ValveController(const gpio_num_t cur_pin,
       // Pi Controller for motor speed
       ctrl_speed_(0, 100000, 100000, -100000),
       // Pi Controller for motor position
-      ctrl_position_(0, 0, 100000, 100000){};
+      ctrl_position_(0, 0, 100000, 100000) {
+  instance_count_++;
+};
 
 /**
  * @brief Try to home the valve
@@ -455,7 +461,10 @@ bool ValveController::move(const std::int32_t position) {
  */
 void ValveController::acquire(void) {
   if (xSemaphoreTake(hardware_mutex_, portMAX_DELAY) == pdTRUE) {
+    ESP_LOGI(TAG, "Acquired Instance %lu", instance_index_);
     active_instance_ = this;
+    active_instance_->startADC();
+    active_instance_->startPWM();
   }
 }
 
@@ -465,8 +474,11 @@ void ValveController::acquire(void) {
  */
 void ValveController::release(void) {
   if (active_instance_ == this) {
+    active_instance_->stopADC();
+    active_instance_->stopPWM();
     active_instance_ = nullptr;
     xSemaphoreGive(hardware_mutex_);
+    ESP_LOGI(TAG, "Released Instance %lu", instance_index_);
   }
 }
 
@@ -509,17 +521,20 @@ void ValveController::calculateControls(const std::uint32_t Tus) {
     actual_current_ = getReading();
     std::int32_t ff = 0; //(set_current_ * series_resistance_) / 1000;
 
-    calculateMotorModel();
+    calculateMotorModel(Tus);
 
     output_voltage_ =
-        pi_current_.Calculate(set_current_, actual_current_, ff, Tus);
+        ctrl_current_.Calculate(set_current_, actual_current_, ff, Tus);
 
-    set_current_ = pi_speed_.Calculate(set_speed_, actual_speed_, 0, Tus);
-    set_speed_ = pi_positon_.Calculate(set_position_, actual_position_, 0, Tus);
+    set_current_ = ctrl_speed_.Calculate(set_speed_, actual_speed_, 0, Tus);
+    set_speed_ =
+        ctrl_position_.Calculate(set_position_, actual_position_, 0, Tus);
+
+    updateVoltage();
   }
 }
 
-std::array<ValveController, CHANNEL_MAX> valves({
+std::array<ValveController, ValveController::CHANNEL_MAX> valves({
     // current      forward     backward
     {GPIO_NUM_1, GPIO_NUM_9, GPIO_NUM_10},
     {GPIO_NUM_2, GPIO_NUM_11, GPIO_NUM_12},
@@ -531,6 +546,10 @@ std::array<ValveController, CHANNEL_MAX> valves({
     {GPIO_NUM_8, GPIO_NUM_37, GPIO_NUM_38},
 });
 
+// ESP Logging tag
+const char *ValveController::TAG = "valve";
+// Counter of instances
+std::uint32_t ValveController::instance_count_ = 1;
 // handle to adc instance
 adc_continuous_handle_t ValveController::adc_handle_ = nullptr;
 // adc calibration handle
@@ -541,6 +560,6 @@ std::array<uint8_t, ValveController::ADC_CONFIG.conv_frame_size>
 // mutex to interlock hardware usage
 SemaphoreHandle_t ValveController::hardware_mutex_;
 // Reference to the instance of the class which has currently taken that mutex
-ValveController &ValveController::active_instance_ = nullptr;
+ValveController *ValveController::active_instance_ = nullptr;
 
 } /* namespace hardware */

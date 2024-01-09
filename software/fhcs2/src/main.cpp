@@ -52,6 +52,8 @@
 const char *TAG = "fhcs2";
 
 extern "C" void app_main() {
+
+  vTaskDelay(10000 / portTICK_PERIOD_MS);
   hardware::Init();
 
   while (1) {
@@ -61,12 +63,12 @@ extern "C" void app_main() {
         hardware::ValveController::CHANNEL_2;
 
     hardware::SetBoardLed(led);
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
     counter++;
 
     hardware::valves[chan].move(1);
     std::int32_t voltage = hardware::valves[chan].getVoltage();
-    static std::int32_t step = 30;
+    static std::int32_t step = 500;
 
     voltage += step;
     if (voltage > hardware::SUPPLY_VOLTAGE) {
@@ -79,11 +81,11 @@ extern "C" void app_main() {
       voltage = -hardware::SUPPLY_VOLTAGE;
     }
 
-    if ((counter % 300) == 0) {
+    if ((counter % 10) == 0) {
       led = true;
     }
 
-    if ((counter % 600) == 0) {
+    if ((counter % 20) == 0) {
       led = false;
     }
 
