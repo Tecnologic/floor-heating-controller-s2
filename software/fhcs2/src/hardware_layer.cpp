@@ -247,46 +247,46 @@ void Init(void) {
  */
 void ValveController::updateVoltage(void) {
   const std::int32_t PWM_MAX = (1UL << (LEDC_TIMER_CONFIG.duty_resolution));
-  const std::int32_t PWM_QUARTER = PWM_MAX / 4;
   const std::int32_t PWM_MIDDLE = PWM_MAX / 2;
-  const std::int32_t PWM_THREE_QUARTER = PWM_QUARTER * 3;
   // portion the edge need to move from the quarter to generate a voltage
   // must be half because its applied symetric
-  std::int32_t half_duty =
-      (PWM_QUARTER * (output_voltage_ / 1000)) / (SUPPLY_VOLTAGE / 500);
-  std::int32_t ch0_rising = PWM_QUARTER - half_duty;
-  std::int32_t ch1_rising = PWM_QUARTER + half_duty;
-  std::int32_t ch0_falling = PWM_THREE_QUARTER - half_duty;
-  std::int32_t ch1_falling = PWM_THREE_QUARTER + half_duty;
+  std::int32_t duty =
+      (PWM_MIDDLE * (output_voltage_ / 1000)) / (SUPPLY_VOLTAGE / 1000);
 
-  // limit rising edges at 0 for 100% duty
-  if (ch0_rising < 0)
-    ch0_rising = 0;
-  if (ch1_rising < 0)
-    ch1_rising = 0;
+  if (duty > PWM_MIDDLE)
+    duty = PWM_MIDDLE;
+  if (duty < -PWM_MIDDLE)
+    duty = -PWM_MIDDLE;
 
-  // limit rising edges at middle of the counter for 100% duty
-  if (ch0_rising > PWM_MIDDLE)
-    ch0_rising = PWM_MIDDLE;
-  if (ch1_rising > PWM_MIDDLE)
-    ch1_rising = PWM_MIDDLE;
+  // Reference Manual sec 30.3.3:
+  // The initial value of Lpointn is the sum of LEDC_DUTY_CHn[18..4] and
+  // LEDC_HPOINT_CHn when the counter overflows.By configuring these two fields,
+  // the relative phase and the duty cycle of the PWM output can be set.
 
-  // limit rising edges at middle of the counter for 100% duty
-  if (ch0_falling < PWM_MIDDLE)
-    ch0_falling = PWM_MIDDLE;
-  if (ch1_falling < PWM_MIDDLE)
-    ch1_falling = PWM_MIDDLE;
+  // 50% pulse width is 0V
+  std::int32_t ch0_pulse_width = PWM_MIDDLE + duty;
+  std::int32_t ch1_pulse_width = PWM_MIDDLE - duty;
+  std::int32_t ch0_pulse_start = PWM_MIDDLE - ch0_pulse_width / 2;
+  std::int32_t ch1_pulse_start = PWM_MIDDLE - ch1_pulse_width / 2;
 
-  // limit rising edges at max counter for 100% duty
-  if (ch0_falling >= PWM_MAX)
-    ch0_falling = PWM_MAX - 1;
-  if (ch1_falling >= PWM_MAX)
-    ch1_falling = PWM_MAX - 1;
+  static std::int32_t old_voltage = 0;
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_and_update(
-      LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ch0_falling, ch0_rising));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_and_update(
-      LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, ch1_falling, ch1_rising));
+  if (old_voltage != output_voltage_) {
+    printf(">output_voltage:%ld\n>duty:%ld\n>ch0_pulse_start:%lu\n>"
+           "ch0_pulse_width:%lu\n>ch1_pulse_start:%lu\n>ch1_pulse_width:%lu\n",
+           output_voltage_, duty, ch0_pulse_start, ch0_pulse_width,
+           ch1_pulse_start, ch1_pulse_width);
+    old_voltage = output_voltage_;
+  }
+  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_with_hpoint(
+      LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ch0_pulse_width, ch0_pulse_start));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_with_hpoint(
+      LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, ch1_pulse_width, ch1_pulse_start));
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1));
 }
 
 /**
@@ -523,12 +523,12 @@ void ValveController::calculateControls(const std::uint32_t Tus) {
 
     calculateMotorModel(Tus);
 
-    output_voltage_ =
-        ctrl_current_.Calculate(set_current_, actual_current_, ff, Tus);
+    // output_voltage_ =
+    //     ctrl_current_.Calculate(set_current_, actual_current_, ff, Tus);
 
-    set_current_ = ctrl_speed_.Calculate(set_speed_, actual_speed_, 0, Tus);
-    set_speed_ =
-        ctrl_position_.Calculate(set_position_, actual_position_, 0, Tus);
+    // set_current_ = ctrl_speed_.Calculate(set_speed_, actual_speed_, 0, Tus);
+    // set_speed_ =
+    //     ctrl_position_.Calculate(set_position_, actual_position_, 0, Tus);
 
     updateVoltage();
   }

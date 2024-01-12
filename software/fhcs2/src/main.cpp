@@ -68,7 +68,7 @@ extern "C" void app_main() {
 
     hardware::valves[chan].move(1);
     std::int32_t voltage = hardware::valves[chan].getVoltage();
-    static std::int32_t step = 500;
+    static std::int32_t step = 200000;
 
     voltage += step;
     if (voltage > hardware::SUPPLY_VOLTAGE) {
@@ -89,6 +89,7 @@ extern "C" void app_main() {
       led = false;
     }
 
+    // ESP_LOGI(TAG, "Set Voltage: %ld", voltage);
     hardware::valves[chan].setVoltage(voltage);
   }
 }

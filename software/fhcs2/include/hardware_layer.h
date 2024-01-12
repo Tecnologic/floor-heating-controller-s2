@@ -341,7 +341,7 @@ protected:
   // pwm timer configuration
   static constexpr ledc_timer_config_t LEDC_TIMER_CONFIG = {
       .speed_mode = LEDC_LOW_SPEED_MODE,
-      .duty_resolution = LEDC_TIMER_10_BIT,
+      .duty_resolution = LEDC_TIMER_11_BIT,
       .timer_num = LEDC_TIMER_0,
       .freq_hz = PWM_FREQUENCY,
       .clk_cfg = LEDC_AUTO_CLK,
