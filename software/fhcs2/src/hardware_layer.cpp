@@ -519,7 +519,7 @@ void ValveController::calculateControls(const std::uint32_t Tus) {
     offset_needed_ = false;
   } else {
     actual_current_ = getReading();
-    std::int32_t ff = 0; //(set_current_ * series_resistance_) / 1000;
+    // std::int32_t ff = 0; //(set_current_ * series_resistance_) / 1000;
 
     calculateMotorModel(Tus);
 

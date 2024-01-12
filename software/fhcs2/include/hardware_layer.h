@@ -317,7 +317,7 @@ protected:
   static constexpr std::uint32_t ADC_CONV_PER_PIN =
       (ADC_CONV_PER_SEC / PWM_FREQUENCY) * 2;
   // ADC Pin attenuation
-  static constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_12;
+  static constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_11;
   // Conversion factor from mV to uA
   static constexpr std::int32_t MV_TO_UA = 70;
 
