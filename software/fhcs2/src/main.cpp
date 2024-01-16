@@ -51,41 +51,47 @@
 
 const char *TAG = "fhcs2";
 
-extern "C" void app_main() {
+extern "C" void app_main()
+{
 
   vTaskDelay(10000 / portTICK_PERIOD_MS);
   hardware::Init();
 
-  while (1) {
+  while (1)
+  {
     static std::uint32_t counter = 0;
     static bool led = false;
     constexpr hardware::ValveController::channels_e chan =
-        hardware::ValveController::CHANNEL_2;
+        hardware::ValveController::CHANNEL_1;
 
     hardware::SetBoardLed(led);
     vTaskDelay(100 / portTICK_PERIOD_MS);
     counter++;
 
     hardware::valves[chan].move(1);
-    std::int32_t voltage = hardware::valves[chan].getVoltage();
-    static std::int32_t step = 200000;
+    std::int32_t voltage = hardware::SUPPLY_VOLTAGE; // hardware::valves[chan].getVoltage();
+    // static std::int32_t step = 200000;
 
-    voltage += step;
-    if (voltage > hardware::SUPPLY_VOLTAGE) {
-      step = -step;
-      voltage = hardware::SUPPLY_VOLTAGE;
-    }
+    // voltage += step;
+    // if (voltage > hardware::SUPPLY_VOLTAGE)
+    // {
+    //   step = -step;
+    //   voltage = hardware::SUPPLY_VOLTAGE;
+    // }
 
-    if (voltage < -hardware::SUPPLY_VOLTAGE) {
-      step = -step;
-      voltage = -hardware::SUPPLY_VOLTAGE;
-    }
+    // if (voltage < -hardware::SUPPLY_VOLTAGE)
+    // {
+    //   step = -step;
+    //   voltage = -hardware::SUPPLY_VOLTAGE;
+    // }
 
-    if ((counter % 10) == 0) {
+    if ((counter % 10) == 0)
+    {
       led = true;
     }
 
-    if ((counter % 20) == 0) {
+    if ((counter % 20) == 0)
+    {
       led = false;
     }
 
