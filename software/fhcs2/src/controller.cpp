@@ -59,14 +59,14 @@ namespace control
 	 * @param new_negative_limit	negative output limit.
 	 */
 	pi::pi(const std::int32_t new_kp, const std::int32_t new_tn,
-				 const std::int32_t new_positive_limit,
-				 const std::int32_t new_negative_limit) : error_sum(0),
-																									output_unlimited(0),
-																									output(0),
-																									kp(new_kp),
-																									tn(new_tn),
-																									positive_limit(new_positive_limit),
-																									negative_limit(new_negative_limit)
+		   const std::int32_t new_positive_limit,
+		   const std::int32_t new_negative_limit) : error_sum(0),
+													output_unlimited(0),
+													output(0),
+													kp(new_kp),
+													tn(new_tn),
+													positive_limit(new_positive_limit),
+													negative_limit(new_negative_limit)
 	{
 	}
 

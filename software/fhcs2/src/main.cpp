@@ -54,48 +54,34 @@ const char *TAG = "fhcs2";
 extern "C" void app_main()
 {
 
-  vTaskDelay(10000 / portTICK_PERIOD_MS);
-  hardware::Init();
+   vTaskDelay(10000 / portTICK_PERIOD_MS);
+   hardware::Init();
 
-  while (1)
-  {
-    static std::uint32_t counter = 0;
-    static bool led = false;
-    constexpr hardware::ValveController::channels_e chan =
-        hardware::ValveController::CHANNEL_1;
+   while (1)
+   {
+      static std::uint32_t counter = 0;
+      static bool led = false;
+      constexpr hardware::ValveController::channels_e chan =
+          hardware::ValveController::CHANNEL_3;
 
-    hardware::SetBoardLed(led);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    counter++;
+      hardware::SetBoardLed(led);
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      counter++;
+      static std::int32_t current = 0;
 
-    hardware::valves[chan].move(1);
-    std::int32_t voltage = hardware::SUPPLY_VOLTAGE; // hardware::valves[chan].getVoltage();
-    // static std::int32_t step = 200000;
+      hardware::valves[chan].move(1);
 
-    // voltage += step;
-    // if (voltage > hardware::SUPPLY_VOLTAGE)
-    // {
-    //   step = -step;
-    //   voltage = hardware::SUPPLY_VOLTAGE;
-    // }
-
-    // if (voltage < -hardware::SUPPLY_VOLTAGE)
-    // {
-    //   step = -step;
-    //   voltage = -hardware::SUPPLY_VOLTAGE;
-    // }
-
-    if ((counter % 10) == 0)
-    {
-      led = true;
-    }
-
-    if ((counter % 20) == 0)
-    {
-      led = false;
-    }
-
-    // ESP_LOGI(TAG, "Set Voltage: %ld", voltage);
-    hardware::valves[chan].setVoltage(voltage);
-  }
+      if ((counter % 300) == 0)
+      {
+         led = true;
+         current = 20000;
+      }
+      else if ((counter % 600) == 0)
+      {
+         led = false;
+         current = 0;
+      }
+      printf(">cur:%ld\n>v:%ld\n>set:%ld\n", hardware::valves[chan].getCurrent(), hardware::valves[chan].getVoltage(), current);
+      hardware::valves[chan].setSetCurrent(current);
+   }
 }

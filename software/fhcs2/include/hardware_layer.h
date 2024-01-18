@@ -38,7 +38,7 @@ namespace hardware
                          const adc_continuous_evt_data_t *edata, void *user_data);
 
   // Supply Voltage of the power bridge in uV
-  constexpr std::int32_t SUPPLY_VOLTAGE = 5000000;
+  constexpr std::int32_t SUPPLY_VOLTAGE = 5000;
 
   /**
    * @brief Valve drive position controller
@@ -71,9 +71,9 @@ namespace hardware
      *
      * @retval actual voltage output of the bridge to the motor in micro Volts
      */
-    inline std::int32_t getVoltage(void) { return (output_voltage_); };
+    inline std::uint32_t getVoltage(void) { return (output_voltage_); };
 
-    inline void setVoltage(const std::int32_t voltage)
+    inline void setVoltage(const std::uint32_t voltage)
     {
       output_voltage_ = voltage;
     };
@@ -306,8 +306,9 @@ namespace hardware
     /**
      * @brief auire control of the drives hardware
      *
+     * @param forward true on forward rotation and false for back wards rotation
      */
-    void acquire(void);
+    void acquire(bool forward);
 
     /**
      * @brief release the control of the drives hardware
@@ -318,20 +319,20 @@ namespace hardware
     /**
      * @brief standard constructor
      */
-    ValveController(const gpio_num_t cur_pin, const gpio_num_t fwd_pin,
-                    const gpio_num_t bwd_pin);
+    ValveController(const gpio_num_t cur_pin, const gpio_num_t bwd_pin,
+                    const gpio_num_t fwd_pin);
 
   protected:
     // ESP Logging tag
     static const char *TAG;
     // PWM frequency in Hz
-    static constexpr std::int32_t PWM_FREQUENCY = 16000;
+    static constexpr std::int32_t PWM_FREQUENCY = 8000;
     // ADC conversions per second
     static constexpr std::uint32_t ADC_CONV_PER_SEC =
         SOC_ADC_SAMPLE_FREQ_THRES_HIGH;
     // ADC conversions per pin
     static constexpr std::uint32_t ADC_CONV_PER_PIN =
-        (ADC_CONV_PER_SEC / PWM_FREQUENCY) * 2;
+        (ADC_CONV_PER_SEC / PWM_FREQUENCY) * 20;
     // ADC Pin attenuation
     static constexpr adc_atten_t ADC_ATTENUATION = ADC_ATTEN_DB_12;
     // Conversion factor from mV to uA
@@ -354,6 +355,7 @@ namespace hardware
         .on_conv_done = ConvDoneCB,
         .on_pool_ovf = nullptr,
     };
+
     // pwm timer configuration
     static constexpr ledc_timer_config_t LEDC_TIMER_CONFIG = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -375,6 +377,10 @@ namespace hardware
     static ValveController *active_instance_;
     // Counter of instances
     static std::uint32_t instance_count_;
+    // Mask for all Output of the instances
+    static uint64_t output_mask_;
+    // Mask for all Inputs of the instances
+    static uint64_t input_mask_;
 
     // adc input gpio for current measurement
     const gpio_num_t ADC_PIN;
@@ -387,11 +393,12 @@ namespace hardware
     const adc_continuous_config_t adc_dig_cfg_;
     // adc channel pattern config
     adc_digi_pattern_config_t adc_pattern_;
-
-    // pwm channel for forward rotation
-    const ledc_channel_config_t ledc_channel_fwd_;
-    // pwm channel for backward rotation
-    const ledc_channel_config_t ledc_channel_bwd_;
+    // ADC IIR Filter configuration
+    adc_continuous_iir_filter_config_t adc_filter_config_;
+    // ADC IIR Filter handle
+    adc_iir_filter_handle_t adc_filter_;
+    // pwm channel for current control
+    ledc_channel_config_t ledc_channel_config_;
 
     // Counter of instances
     std::uint32_t instance_index_;
@@ -401,10 +408,12 @@ namespace hardware
     std::int32_t set_current_;
     // current offset in uA
     std::int32_t offset_current_;
-    // output voltage in uV
-    std::int32_t output_voltage_;
+    // output voltage in mV
+    std::uint32_t output_voltage_;
     // offset samples needed just after boot
     bool offset_needed_;
+    // actual moving direction, true is forward and false is backwards
+    bool forward_direction_;
     // actual position
     std::int32_t actual_position_;
     // set position
@@ -429,9 +438,9 @@ namespace hardware
     std::int32_t current_reading_sum_;
     // current reading count
     std::uint32_t current_reading_count_;
-    // Motor series resistance mOhm
+    // Motor series resistance 1/10 Ohm
     std::int32_t series_resistance_;
-    // Motor series inductance uH
+    // Motor series inductance 1/10 mH
     std::int32_t series_inductance_;
     // Pi Controller for motor current
     control::pi ctrl_current_;

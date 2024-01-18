@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdio.h>
+#include <limits>
 
 namespace hardware
 {
@@ -97,6 +98,40 @@ namespace hardware
     /* Create a mutex type semaphore for shared hardware mutal exclusion */
     hardware_mutex_ = xSemaphoreCreateMutex();
     ESP_LOGI(TAG, "Mutex initialized");
+
+    // zero-initialize the config structure.
+    gpio_config_t io_conf = {};
+    // disable interrupt
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    // set as output mode
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    // enable pull-down mode
+    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    // disable pull-up mode
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    // bit mask of the pins that you want to set
+    io_conf.pin_bit_mask = output_mask_;
+    // configure GPIO with the given settings
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    // set all configured outputs to 0
+    for (std::uint8_t i = 0; i < 64; i++)
+    {
+      if (output_mask_ & (1ULL << i))
+      {
+        ESP_ERROR_CHECK(gpio_set_level(static_cast<gpio_num_t>(i), 0));
+      }
+    }
+
+    // set as input mode
+    io_conf.mode = GPIO_MODE_INPUT;
+    // disable pull-down mode
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    // bit mask of the pins that you want to set
+    io_conf.pin_bit_mask = input_mask_;
+    // configure GPIO with the given settings
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    ESP_LOGI(TAG, "GPIOs initialized");
+
     ESP_ERROR_CHECK(
         adc_cali_create_scheme_line_fitting(&ADC_CALI_CONFIG, &adc_cali_handle_));
     ESP_ERROR_CHECK(adc_continuous_new_handle(&ADC_CONFIG, &adc_handle_));
@@ -116,6 +151,8 @@ namespace hardware
   {
     ESP_LOGI(TAG, "Start ADC %lu", instance_index_);
     ESP_ERROR_CHECK(adc_continuous_config(adc_handle_, &adc_dig_cfg_));
+    ESP_ERROR_CHECK(adc_new_continuous_iir_filter(adc_handle_, &adc_filter_config_, &adc_filter_));
+    ESP_ERROR_CHECK(adc_continuous_iir_filter_enable(adc_filter_));
     ESP_ERROR_CHECK(adc_continuous_start(adc_handle_));
   }
 
@@ -126,16 +163,19 @@ namespace hardware
   {
     ESP_LOGI(TAG, "Stop ADC %lu", instance_index_);
     ESP_ERROR_CHECK(adc_continuous_stop(adc_handle_));
+    ESP_ERROR_CHECK(adc_continuous_iir_filter_disable(adc_filter_));
+    ESP_ERROR_CHECK(adc_del_continuous_iir_filter(adc_filter_));
   }
 
   /**
    * @brief setup the PWM Channels for this valve instance
    */
-  void ValveController::startPWM(void)
+  void ValveController::startPWM()
   {
     ESP_LOGI(TAG, "Start PWM %lu", instance_index_);
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_fwd_));
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_bwd_));
+    ledc_channel_config_.flags.output_invert = forward_direction_;
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_config_));
+    ESP_ERROR_CHECK(gpio_set_level(FWD_PIN, forward_direction_));
   }
 
   /**
@@ -145,7 +185,6 @@ namespace hardware
   {
     ESP_LOGI(TAG, "Stop ADC %lu", instance_index_);
     ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
-    ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 0);
   }
 
   /**
@@ -200,7 +239,7 @@ namespace hardware
           std::uint64_t current_us = esp_timer_get_time();
           static std::uint64_t last_us = 0;
           std::uint64_t diff_us = current_us - last_us;
-
+          last_us = current_us;
           ValveController::active_instance_->calculateControls(diff_us);
         }
       }
@@ -261,48 +300,16 @@ namespace hardware
    */
   void ValveController::updateVoltage(void)
   {
-    const std::int32_t PWM_MAX = (1UL << (LEDC_TIMER_CONFIG.duty_resolution));
-    const std::int32_t PWM_MIDDLE = PWM_MAX / 2;
-    // portion the edge need to move from the quarter to generate a voltage
-    // must be half because its applied symetric
-    std::int32_t duty =
-        (PWM_MIDDLE * (output_voltage_ / 1000)) / (SUPPLY_VOLTAGE / 1000);
+    const std::uint32_t PWM_MAX = (1UL << (LEDC_TIMER_CONFIG.duty_resolution));
+    std::uint32_t duty =
+        (PWM_MAX * (output_voltage_)) / (SUPPLY_VOLTAGE);
 
-    if (duty > PWM_MIDDLE)
-      duty = PWM_MIDDLE;
-    if (duty < -PWM_MIDDLE)
-      duty = -PWM_MIDDLE;
-
-    // Reference Manual sec 30.3.3:
-    // The initial value of Lpointn is the sum of LEDC_DUTY_CHn[18..4] and
-    // LEDC_HPOINT_CHn when the counter overflows.By configuring these two fields,
-    // the relative phase and the duty cycle of the PWM output can be set.
-
-    // 50% pulse width is 0V
-    std::int32_t ch0_pulse_width = PWM_MIDDLE + duty;
-    std::int32_t ch1_pulse_width = PWM_MIDDLE - duty;
-    std::int32_t ch0_pulse_start = PWM_MIDDLE - ch0_pulse_width / 2;
-    std::int32_t ch1_pulse_start = PWM_MIDDLE - ch1_pulse_width / 2;
-
-    static std::int32_t old_voltage = 0;
-
-    if (old_voltage != output_voltage_)
+    if (duty > PWM_MAX)
     {
-      // printf(">output_voltage:%ld\n>duty:%ld\n>ch0_pulse_start:%lu\n>"
-      //        "ch0_pulse_width:%lu\n>ch1_pulse_start:%lu\n>ch1_pulse_width:%lu\n",
-      //        output_voltage_, duty, ch0_pulse_start, ch0_pulse_width,
-      //        ch1_pulse_start, ch1_pulse_width);
-      old_voltage = output_voltage_;
+      duty = PWM_MAX;
     }
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_with_hpoint(
-        LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ch0_pulse_width, ch0_pulse_start));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_with_hpoint(
-        LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, ch1_pulse_width, ch1_pulse_start));
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ledc_set_duty_and_update(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty, 0));
   }
 
   /**
@@ -333,7 +340,6 @@ namespace hardware
               adc_cali_raw_to_voltage(adc_cali_handle_, data, &mv_reading));
           sum += static_cast<std::int32_t>(mv_reading) * MV_TO_UA;
           cnt++;
-          printf(">raw:%lu\n", data);
         }
         else
         {
@@ -341,7 +347,6 @@ namespace hardware
                    chan_num, data);
         }
       }
-
       return (sum / cnt);
     }
     else
@@ -353,8 +358,8 @@ namespace hardware
    * @brief standard constructor
    */
   ValveController::ValveController(const gpio_num_t cur_pin,
-                                   const gpio_num_t fwd_pin,
-                                   const gpio_num_t bwd_pin)
+                                   const gpio_num_t bwd_pin,
+                                   const gpio_num_t fwd_pin)
       : // adc input gpio for current measurement
         ADC_PIN(cur_pin),
         // pwm output gpio for forward rotation.
@@ -365,7 +370,7 @@ namespace hardware
         adc_dig_cfg_{
             .pattern_num = 1,
             .adc_pattern = &adc_pattern_,
-            .sample_freq_hz = SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
+            .sample_freq_hz = ADC_CONV_PER_SEC,
             .conv_mode = ADC_CONV_SINGLE_UNIT_1,
             .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
         },
@@ -376,26 +381,21 @@ namespace hardware
             .unit = ADC_UNIT_1,
             .bit_width = ADC_BITWIDTH_12,
         },
-        // pwm channel for forward rotation configuration
-        ledc_channel_fwd_{
-            .gpio_num = FWD_PIN,
+        // ADC IIR Filter Config
+        adc_filter_config_{
+            .unit = ADC_UNIT_1,
+            .channel = ADC_CHANNEL_0,
+            .coeff = ADC_DIGI_IIR_FILTER_COEFF_64,
+        },
+        // pwm channel for current control configuration
+        ledc_channel_config_{
+            .gpio_num = BWD_PIN,
             .speed_mode = LEDC_LOW_SPEED_MODE,
             .channel = LEDC_CHANNEL_0,
             .intr_type = LEDC_INTR_DISABLE,
             .timer_sel = LEDC_TIMER_0,
-            .duty = (1U << LEDC_TIMER_CONFIG.duty_resolution) / 2,
-            .hpoint = (1U << LEDC_TIMER_CONFIG.duty_resolution) / 2,
-            .flags = {0},
-        },
-        // pwm channel for backward rotation configuration
-        ledc_channel_bwd_{
-            .gpio_num = BWD_PIN,
-            .speed_mode = LEDC_LOW_SPEED_MODE,
-            .channel = LEDC_CHANNEL_1,
-            .intr_type = LEDC_INTR_DISABLE,
-            .timer_sel = LEDC_TIMER_0,
-            .duty = (1U << LEDC_TIMER_CONFIG.duty_resolution) / 2,
-            .hpoint = (1U << LEDC_TIMER_CONFIG.duty_resolution) / 2,
+            .duty = 0,
+            .hpoint = 0,
             .flags = {0},
         },
         // Counter of instances
@@ -410,6 +410,8 @@ namespace hardware
         output_voltage_(0),
         // offset samples needed just after boot
         offset_needed_(true),
+        // actual moving direction, true is forward and false is backwards
+        forward_direction_(true),
         // actual position
         actual_position_(0),
         // set position
@@ -434,12 +436,12 @@ namespace hardware
         current_reading_sum_(0),
         // current reading count
         current_reading_count_(0),
-        // Motor series resistance mOhm
-        series_resistance_(42000),
-        // Motor series inductance uH
-        series_inductance_(16300),
+        // Motor series resistance 1/10 Ohm
+        series_resistance_(420),
+        // Motor series inductance 1/10 mH
+        series_inductance_(163),
         // Pi Controller for motor current
-        ctrl_current_(0, 1000, SUPPLY_VOLTAGE, -SUPPLY_VOLTAGE),
+        ctrl_current_(5, 1000, SUPPLY_VOLTAGE - 1000, 0),
         // Pi Controller for motor speed
         ctrl_speed_(0, 100000, 100000, -100000),
         // Pi Controller for motor position
@@ -449,9 +451,12 @@ namespace hardware
     adc_channel_t channel;
 
     instance_count_++;
+    output_mask_ |= (1ULL << BWD_PIN) | (1ULL << FWD_PIN);
+    input_mask_ |= (1ULL << ADC_PIN);
 
     adc_continuous_io_to_channel(ADC_PIN, &unit_id, &channel);
     adc_pattern_.channel = static_cast<std::uint8_t>(channel);
+    adc_filter_config_.channel = channel;
   };
 
   /**
@@ -472,9 +477,17 @@ namespace hardware
   {
     bool busy = false;
 
-    if (active_instance_ == nullptr && position != set_position_)
+    if (active_instance_ == nullptr)
     {
-      acquire();
+      // equal is not handled be cause then no move is nessesary
+      if (position > set_position_)
+      {
+        acquire(true);
+      }
+      else if (position < set_position_)
+      {
+        acquire(false);
+      }
     }
 
     if (active_instance_ == this)
@@ -492,12 +505,14 @@ namespace hardware
   /**
    * @brief auire control of the drives hardware
    *
+   * @param forward true on forward rotation and false for back wards rotation
    */
-  void ValveController::acquire(void)
+  void ValveController::acquire(bool forward)
   {
     if (xSemaphoreTake(hardware_mutex_, portMAX_DELAY) == pdTRUE)
     {
       ESP_LOGI(TAG, "Acquired Instance %lu", instance_index_);
+      forward_direction_ = forward;
       active_instance_ = this;
       active_instance_->startADC();
       active_instance_->startPWM();
@@ -528,19 +543,19 @@ namespace hardware
   {
     static std::int32_t last_current = 0;
 
-    if (std::abs(actual_current_) > 1000)
+    if (std::abs(actual_current_) > 100)
     {
       // voltage across the series resistance in uV
-      std::int32_t r_volt = (actual_current_ * series_resistance_) / 1000;
+      std::uint32_t r_volt = (actual_current_ * series_resistance_) / 10000;
       // u = L * di /dt
       std::int32_t i_volt =
-          (series_inductance_ * (actual_current_ - last_current)) / Tus;
+          (series_inductance_ * (actual_current_ - last_current)) / (Tus * 10);
 
       // Bemf voltage as measurement for speed
       actual_speed_ = output_voltage_ - (r_volt + i_volt);
 
       // integrate to position
-      actual_position_ += (actual_speed_ * 1000) / static_cast<std::int32_t>(Tus);
+      actual_position_ += (actual_speed_ * 10) / static_cast<std::int32_t>(Tus);
     }
     else
     {
@@ -564,18 +579,17 @@ namespace hardware
     }
     else
     {
-      actual_current_ = getReading();
-      // std::int32_t ff = 0; //(set_current_ * series_resistance_) / 1000;
+      actual_current_ = getReading() - offset_current_;
+      std::int32_t ff = 0; //(set_current_ * series_resistance_) / 10000;
 
       calculateMotorModel(Tus);
 
-      // output_voltage_ =
-      //     ctrl_current_.Calculate(set_current_, actual_current_, ff, Tus);
+      output_voltage_ =
+          ctrl_current_.Calculate(set_current_, actual_current_, ff, Tus);
 
       // set_current_ = ctrl_speed_.Calculate(set_speed_, actual_speed_, 0, Tus);
       // set_speed_ =
       //     ctrl_position_.Calculate(set_position_, actual_position_, 0, Tus);
-
       updateVoltage();
     }
   }
@@ -607,5 +621,9 @@ namespace hardware
   SemaphoreHandle_t ValveController::hardware_mutex_;
   // Reference to the instance of the class which has currently taken that mutex
   ValveController *ValveController::active_instance_ = nullptr;
+  // Mask for all Output of the instances
+  uint64_t ValveController::output_mask_ = 0ULL;
+  // Mask for all Inputs of the instances
+  uint64_t ValveController::input_mask_ = 0ULL;
 
 } /* namespace hardware */
